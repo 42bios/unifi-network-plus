@@ -1,0 +1,7 @@
+{
+  "name": "UniFi Network+",
+  "country": "DE",
+  "homeassistant": "2025.1",
+  "render_readme": true,
+  "filename": "custom_components/unifi_network_plus/manifest.json"
+}
