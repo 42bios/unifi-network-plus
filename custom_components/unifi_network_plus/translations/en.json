@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "UniFi Network+",
+        "description": "Connect to your local UniFi Network Controller / UniFi OS console. A dedicated local read-only account is recommended over your cloud admin credentials.",
+        "data": {
+          "host": "Host / IP",
+          "username": "Username",
+          "password": "Password",
+          "site": "Site name",
+          "port": "Port",
+          "verify_ssl": "Verify SSL certificate",
+          "scan_interval": "Scan interval (s)",
+          "top_clients_count": "Number of top clients to track"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the UniFi controller",
+      "invalid_auth": "Invalid username or password"
+    },
+    "abort": {
+      "already_configured": "This controller/site is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UniFi Network+ options",
+        "data": {
+          "scan_interval": "Scan interval (s)",
+          "top_clients_count": "Number of top clients to track"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "wan_download": { "name": "WAN Download" },
+      "wan_upload": { "name": "WAN Upload" },
+      "wan_latency": { "name": "WAN Latency" },
+      "wan_packet_loss": { "name": "WAN Packet Loss" },
+      "monthly_usage": { "name": "Monthly Data Usage" },
+      "top_clients": { "name": "Top Clients" },
+      "connected_clients": { "name": "Connected Clients" },
+      "radio_channel_utilization": { "name": "{device} {radio} Channel Utilization" },
+      "radio_tx_retries": { "name": "{device} {radio} TX Retries" }
+    }
+  }
+}

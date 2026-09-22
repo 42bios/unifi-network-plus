@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "UniFi Network+",
+        "description": "Verbindung zum lokalen UniFi Network Controller / UniFi-OS-Console. Ein dediziertes lokales Nur-Lese-Konto wird anstelle der Cloud-Admin-Zugangsdaten empfohlen.",
+        "data": {
+          "host": "Host / IP",
+          "username": "Benutzername",
+          "password": "Passwort",
+          "site": "Site-Name",
+          "port": "Port",
+          "verify_ssl": "SSL-Zertifikat prüfen",
+          "scan_interval": "Abfrageintervall (s)",
+          "top_clients_count": "Anzahl der Top-Clients"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum UniFi-Controller nicht möglich",
+      "invalid_auth": "Benutzername oder Passwort ungültig"
+    },
+    "abort": {
+      "already_configured": "Dieser Controller/diese Site ist bereits eingerichtet"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UniFi Network+ Optionen",
+        "data": {
+          "scan_interval": "Abfrageintervall (s)",
+          "top_clients_count": "Anzahl der Top-Clients"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "wan_download": { "name": "WAN Download" },
+      "wan_upload": { "name": "WAN Upload" },
+      "wan_latency": { "name": "WAN Latenz" },
+      "wan_packet_loss": { "name": "WAN Paketverlust" },
+      "monthly_usage": { "name": "Monatliches Datenvolumen" },
+      "top_clients": { "name": "Top-Clients" },
+      "connected_clients": { "name": "Verbundene Clients" },
+      "radio_channel_utilization": { "name": "{device} {radio} Kanalauslastung" },
+      "radio_tx_retries": { "name": "{device} {radio} TX-Retries" }
+    }
+  }
+}
