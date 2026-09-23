@@ -49,8 +49,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # bad/self-signed cert setting for this controller never affects other
     # integrations, and so its cookie jar (holding the UniFi OS TOKEN
     # cookie) is isolated per config entry.
+    # UniFi controllers are almost always reached by bare IP on the local
+    # network. aiohttp's default cookie jar refuses to store cookies for
+    # numeric IP hosts (a conservative RFC 6265 interpretation) unless
+    # created with ``unsafe=True`` - without this, the UniFi OS ``TOKEN``
+    # session cookie set on login is silently dropped and every following
+    # request comes back 401 even though the login itself succeeded.
     verify_ssl = bool(options.get(CONF_VERIFY_SSL, data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)))
-    session = async_create_clientsession(hass, verify_ssl=verify_ssl)
+    session = async_create_clientsession(
+        hass, verify_ssl=verify_ssl, cookie_jar=aiohttp.CookieJar(unsafe=True)
+    )
 
     client = UniFiClient(
         session=session,

@@ -12,12 +12,15 @@ easy to trace back to a concrete HTTP response.
 
 Endpoint paths and the UniFi-OS auth/CSRF flow were verified against the
 ``aiounifi`` source (Kane610/aiounifi) and the widely used Art-of-WiFi
-``UniFi-API-client`` PHP library as references, not guessed. See README.md
-for details and the "needs live validation" caveats -- this project was
-built without access to a real controller, so exact field names for some
-of the newer report attributes (e.g. WiFi connectivity success rates)
-could not be confirmed against a live response and are implemented
-defensively (missing keys resolve to ``None`` rather than raising).
+``UniFi-API-client`` PHP library as references, not guessed, and this
+client has since been exercised end-to-end against a live UDM-family
+(UniFi OS) controller - see README.md for exactly what that covered, the
+three real bugs that testing surfaced (aiohttp dropping cookies for
+bare-IP hosts, CSRF being required on GET too, and ``stat/report`` needing
+an explicit ``attrs``/time-range body), and which fields (e.g. WAN packet
+loss, and anything on classic non-UniFi-OS controllers) are still
+unconfirmed and implemented defensively (missing keys resolve to ``None``
+rather than raising).
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -32,6 +36,24 @@ import aiohttp
 from .const import REQUEST_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
+
+# Attributes requested from stat/report/{interval}.gw: cumulative rx/tx byte
+# counters plus average WAN latency for the sample interval. Without an
+# explicit "attrs" list (and a start/end range) the controller was observed
+# to return an empty ``data: []`` array with HTTP 200 - i.e. it *looks*
+# successful but yields nothing to parse. parsing.py checks several known
+# field-name variants (e.g. a possible ``wan-rx_bytes-r`` rate field some
+# controller versions add) since the exact set can vary by version.
+_REPORT_ATTRS = ["time", "wan-rx_bytes", "wan-tx_bytes", "wan-latency_avg"]
+
+# How far back to look per report interval. The controller has finite
+# retention per granularity (5-minute samples aren't kept for a full year,
+# for instance), so these are deliberately short windows - we only ever
+# need the *latest* sample from the 5-minute/hourly reports, and the daily
+# report only needs to cover the current calendar month
+# (MONTHLY_USAGE_LOOKBACK_DAYS in coordinator.py already widens that window
+# on the parsing side; this just has to be at least that long).
+_REPORT_LOOKBACK_HOURS = {"5minutes.gw": 3, "hourly.gw": 48, "daily.gw": 24 * 35}
 
 
 def _extract_csrf_from_jwt(token: str) -> str | None:
@@ -148,6 +170,12 @@ class UniFiClient:
             "password": self._password,
             "remember": True,
         }
+        _LOGGER.debug(
+            "UniFi login: host=%s is_unifi_os=%s path=%s",
+            self.base_url,
+            self._is_unifi_os,
+            login_path,
+        )
 
         try:
             async with self._session.post(
@@ -156,6 +184,12 @@ class UniFiClient:
                 ssl=self._verify_ssl,
                 timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
             ) as resp:
+                _LOGGER.debug(
+                    "UniFi login response: status=%s has_csrf_header=%s has_token_cookie=%s",
+                    resp.status,
+                    "X-CSRF-Token" in resp.headers,
+                    "TOKEN" in resp.cookies,
+                )
                 if resp.status in (400, 401, 403):
                     raise UniFiAuthError(f"Login rejected with HTTP {resp.status}")
                 if resp.status >= 400:
@@ -201,10 +235,23 @@ class UniFiClient:
         await self._ensure_logged_in()
 
         headers: dict[str, str] = {}
-        if self._csrf_token and method.upper() != "GET":
+        if self._csrf_token:
+            # Some UniFi OS versions only enforce the CSRF header on
+            # state-changing requests, others reject *any* proxied
+            # /proxy/network/... call (including GET) without it. Sending it
+            # unconditionally is harmless when it's not required.
             headers["X-CSRF-Token"] = self._csrf_token
 
         url = f"{self.base_url}{self._api_path(suffix)}"
+        stored_cookies = self._session.cookie_jar.filter_cookies(self.base_url)
+        _LOGGER.debug(
+            "UniFi request: %s %s csrf_present=%s cookie_jar_has_token=%s headers_sent=%s",
+            method,
+            url,
+            bool(self._csrf_token),
+            "TOKEN" in stored_cookies,
+            list(headers.keys()),
+        )
         try:
             async with self._session.request(
                 method,
@@ -214,6 +261,15 @@ class UniFiClient:
                 ssl=self._verify_ssl,
                 timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
             ) as resp:
+                if resp.status >= 400:
+                    body_preview = (await resp.text())[:500]
+                    _LOGGER.debug(
+                        "UniFi request failed: %s %s status=%s body=%s",
+                        method,
+                        suffix,
+                        resp.status,
+                        body_preview,
+                    )
                 if resp.status == 401 and retry_on_auth_failure:
                     # Session/cookie expired - re-authenticate once and retry.
                     self._logged_in = False
@@ -250,7 +306,10 @@ class UniFiClient:
 
     async def get_health(self) -> list[dict[str, Any]]:
         """Return subsystem health entries (``stat/health``)."""
-        return await self._get("stat/health")
+        result = await self._get("stat/health")
+        wan = [e for e in result if e.get("subsystem") == "wan"]
+        _LOGGER.debug("UniFi stat/health wan subsystem: %s", wan)
+        return result
 
     async def get_wan_report_5min(self) -> list[dict[str, Any]]:
         """Return recent 5-minute WAN throughput/latency samples."""
@@ -267,14 +326,23 @@ class UniFiClient:
     async def _get_report(self, kind: str) -> list[dict[str, Any]]:
         """POST to the stat/report endpoint.
 
-        The report endpoints are queried via POST with a JSON body
-        selecting the desired attributes and time range on most controller
-        versions; recent versions also accept a plain GET. We use POST
-        with an (optional) empty body first and fall back to GET, since
-        both have been observed in the wild across controller versions.
+        The report endpoints require an explicit ``attrs`` list and a
+        ``start``/``end`` time range (in epoch milliseconds) - without them
+        the controller returns HTTP 200 with an empty ``data`` array rather
+        than an error, which silently looks like "no data yet" instead of
+        the malformed-request it actually is.
         """
         suffix = f"stat/report/{kind}"
+        now_ms = int(time.time() * 1000)
+        lookback_hours = _REPORT_LOOKBACK_HOURS.get(kind, 24)
+        body = {
+            "attrs": _REPORT_ATTRS,
+            "start": now_ms - lookback_hours * 3600 * 1000,
+            "end": now_ms,
+        }
         try:
-            return await self._request("POST", suffix, json_body={"attrs": None})
+            result = await self._request("POST", suffix, json_body=body)
         except UniFiApiError:
-            return await self._get(suffix)
+            result = await self._get(suffix)
+        _LOGGER.debug("UniFi report %s: %d sample(s), first=%s", suffix, len(result), result[:1])
+        return result

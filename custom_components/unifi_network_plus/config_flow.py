@@ -36,29 +36,41 @@ async def _test_connection(
     site: str,
     verify_ssl: bool,
 ) -> tuple[bool, str | None]:
-    """Try to log in. Returns (ok, error_code)."""
-    session = async_create_clientsession(hass, verify_ssl=verify_ssl)
+    """Try to log in. Returns (ok, error_code).
+
+    Uses ``async_create_clientsession`` with its default ``auto_cleanup=True``:
+    Home Assistant registers its own shutdown listener to close this session,
+    so we must *not* close it ourselves here (doing so previously tripped
+    HA's "integration closes a HA-managed aiohttp session" frame-helper
+    warning).
+    """
+    # UniFi controllers are almost always reached by bare IP on the local
+    # network. aiohttp's default cookie jar refuses to store cookies for
+    # numeric IP hosts (a conservative RFC 6265 interpretation) unless
+    # created with ``unsafe=True`` - without this, the UniFi OS ``TOKEN``
+    # session cookie set on login is silently dropped and every following
+    # request comes back 401 even though the login itself succeeded.
+    session = async_create_clientsession(
+        hass, verify_ssl=verify_ssl, cookie_jar=aiohttp.CookieJar(unsafe=True)
+    )
+    client = UniFiClient(
+        session=session,
+        host=host,
+        username=username,
+        password=password,
+        site=site,
+        verify_ssl=verify_ssl,
+        port=port,
+    )
     try:
-        client = UniFiClient(
-            session=session,
-            host=host,
-            username=username,
-            password=password,
-            site=site,
-            verify_ssl=verify_ssl,
-            port=port,
-        )
-        try:
-            await client.login()
-        except UniFiAuthError:
-            return False, "invalid_auth"
-        except UniFiConnectionError:
-            return False, "cannot_connect"
-        except aiohttp.ClientError:
-            return False, "cannot_connect"
-        return True, None
-    finally:
-        await session.close()
+        await client.login()
+    except UniFiAuthError:
+        return False, "invalid_auth"
+    except UniFiConnectionError:
+        return False, "cannot_connect"
+    except aiohttp.ClientError:
+        return False, "cannot_connect"
+    return True, None
 
 
 class UniFiNetworkPlusOptionsFlow(config_entries.OptionsFlow):

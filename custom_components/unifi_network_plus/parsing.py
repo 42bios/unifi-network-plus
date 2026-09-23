@@ -32,28 +32,41 @@ class WanThroughput:
     timestamp: int | None
 
 
-def parse_wan_throughput(report_samples: list[dict[str, Any]]) -> WanThroughput:
+def parse_wan_throughput(
+    report_samples: list[dict[str, Any]], bucket_seconds: float = 300
+) -> WanThroughput:
     """Parse the latest sample from a stat/report/*.gw response.
 
-    UniFi report samples carry cumulative and (on most versions) rate
-    fields. Rate fields commonly seen across controller versions:
-    ``wan-rx_bytes-r`` / ``wan-tx_bytes-r`` (bytes/second at sample time).
-    Latency/loss field names vary more between versions
-    (``wan-latency_avg``, ``latency``, ...); we try several known
-    candidates and fall back to None rather than guessing wrong.
+    Confirmed against a live UDM-family controller: each
+    ``stat/report/5minutes.gw`` sample's ``wan-rx_bytes`` / ``wan-tx_bytes``
+    is the total for *that one bucket* (not a running lifetime counter -
+    values were observed to vary independently between consecutive
+    buckets, and this is also what makes ``parse_monthly_usage`` summing
+    daily samples directly do the right thing). Average Mbps for the
+    bucket is therefore just bytes-in-bucket * 8 / bucket_seconds.
+    ``bucket_seconds`` defaults to 300 (5-minute report); pass a different
+    value when parsing the hourly/daily reports instead.
+
+    Latency/loss field names are less consistent across controller
+    versions and were not present at all in the samples this was tested
+    against (no WAN health-check/speedtest configured on that gateway) -
+    we try several known candidates and fall back to None rather than
+    guessing wrong; downstream sensors show as unavailable rather than 0
+    when that happens.
     """
     if not report_samples:
         return WanThroughput(None, None, None, None, None)
 
-    latest = max(
-        report_samples,
-        key=lambda sample: _num(sample.get("time")) or 0,
-    )
+    latest = max(report_samples, key=lambda sample: _num(sample.get("time")) or 0)
 
-    rx_rate = _num(latest.get("wan-rx_bytes-r"))
-    tx_rate = _num(latest.get("wan-tx_bytes-r"))
-    download_mbps = round(rx_rate * 8 / 1_000_000, 2) if rx_rate is not None else None
-    upload_mbps = round(tx_rate * 8 / 1_000_000, 2) if tx_rate is not None else None
+    rx_bytes = _num(latest.get("wan-rx_bytes"))
+    tx_bytes = _num(latest.get("wan-tx_bytes"))
+    download_mbps = (
+        round(rx_bytes * 8 / 1_000_000 / bucket_seconds, 2) if rx_bytes is not None else None
+    )
+    upload_mbps = (
+        round(tx_bytes * 8 / 1_000_000 / bucket_seconds, 2) if tx_bytes is not None else None
+    )
 
     latency_ms = None
     for key in ("wan-latency_avg", "latency", "wan-latency"):
@@ -250,3 +263,49 @@ def parse_health(health_entries: list[dict[str, Any]]) -> list[HealthSubsystem]:
             )
         )
     return result
+
+
+@dataclass(frozen=True)
+class WanHealth:
+    """WAN-subsystem detail from stat/health - confirmed against a live
+    UDM-family controller. Not exposed by ``parse_health`` above (which
+    only keeps the small common subset shared by every subsystem type)
+    since these fields are WAN-specific.
+    """
+
+    isp_name: str | None
+    availability_percent: float | None
+    latency_ms: float | None
+    rx_rate_mbps: float | None
+    tx_rate_mbps: float | None
+
+
+def parse_wan_health(health_entries: list[dict[str, Any]]) -> WanHealth:
+    """Extract ISP/latency/availability/live-rate from the "wan" stat/health entry.
+
+    ``uptime_stats.WAN.{latency_average,availability}`` are the controller's
+    own rolling WAN-monitor figures (the same ping/DNS probes the UniFi
+    Network app's dashboard shows) - a better source for these than the
+    ``stat/report`` endpoints, which were not found to carry latency/loss
+    fields at all on the controller this was tested against.
+    ``{rx,tx}_bytes-r`` are live instantaneous byte/second rates, useful as
+    a more responsive throughput reading than the ``stat/report`` buckets
+    (which lag by up to one full bucket interval).
+    """
+    wan = next((e for e in health_entries if e.get("subsystem") == "wan"), None)
+    if wan is None:
+        return WanHealth(None, None, None, None, None)
+
+    uptime_stats = wan.get("uptime_stats")
+    wan_monitor = uptime_stats.get("WAN") if isinstance(uptime_stats, dict) else None
+
+    rx_rate = _num(wan.get("rx_bytes-r"))
+    tx_rate = _num(wan.get("tx_bytes-r"))
+
+    return WanHealth(
+        isp_name=wan.get("isp_name"),
+        availability_percent=_num(wan_monitor.get("availability")) if wan_monitor else None,
+        latency_ms=_num(wan_monitor.get("latency_average")) if wan_monitor else None,
+        rx_rate_mbps=round(rx_rate * 8 / 1_000_000, 2) if rx_rate is not None else None,
+        tx_rate_mbps=round(tx_rate * 8 / 1_000_000, 2) if tx_rate is not None else None,
+    )

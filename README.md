@@ -3,8 +3,12 @@
 Home Assistant custom integration that talks **directly** to a local
 Ubiquiti UniFi Network Controller / UniFi OS console and exposes the extra
 statistics the built-in core `unifi` integration does not: WAN throughput,
-latency/packet loss, top clients by traffic, and per-AP-radio channel
+latency, ISP/availability, top clients by traffic, and per-AP-radio channel
 utilization / TX retries.
+
+**Verified against a live UDM-family (UniFi OS) controller** - see "What
+was verified" below for exactly what that covered and what's still
+best-effort on other controller models/versions.
 
 ## Why this exists
 
@@ -13,7 +17,8 @@ device health, but it does not map several of the numbers the UniFi
 Network application itself shows on its dashboard:
 
 - WAN throughput history (the "Internet Activity" download/upload graph)
-- Average WAN latency / packet loss
+- Average WAN latency and the controller's own WAN availability monitor
+- ISP name
 - Top clients ranked by traffic volume
 - Per-AP-radio channel utilization and TX retries
 - Monthly WAN data usage
@@ -30,14 +35,19 @@ fetch or map that data.
   (UDM/UDM-Pro/UDR/Cloud Key Gen2+), or `POST /api/login` on classic
   controllers / Cloud Key Gen1. UniFi OS responses carry a CSRF token
   (`X-CSRF-Token` header, sometimes only inside the `TOKEN` cookie's JWT
-  payload) that is then sent back on every subsequent request.
+  payload) that is then sent back on every subsequent request - **on every
+  request, not just state-changing ones**, see the bugs section below for
+  why that matters.
 - Reads data from `stat/sta` (clients), `stat/device` (APs/switches/
-  gateways, including per-radio stats), `stat/health` (subsystem status),
-  and `stat/report/{5minutes,hourly,daily}.gw` (WAN throughput/usage
-  history), scoped under `/api/s/<site>/...` (classic) or
+  gateways, including per-radio stats), `stat/health` (subsystem status,
+  including WAN ISP/latency/availability), and
+  `stat/report/{5minutes,hourly,daily}.gw` (WAN throughput/usage history),
+  scoped under `/api/s/<site>/...` (classic) or
   `/proxy/network/api/s/<site>/...` (UniFi OS).
 - Polls on a `DataUpdateCoordinator` (default 60s, configurable) and
-  exposes the parsed results as sensors. Historical charts for the
+  exposes the parsed results as sensors, grouped as Home Assistant devices
+  per physical UniFi device (each AP gets its own device entry, linked to
+  the controller device via `via_device`). Historical charts for the
   numeric sensors (WAN Mbps, latency, etc.) come for free from Home
   Assistant's own Recorder/History - no custom charting needed.
 
@@ -55,53 +65,90 @@ mean fighting that model as much as using it. A small, dependency-free
 integration's surface area easy to audit and to keep in sync with what
 each sensor actually reads.
 
+## Three real bugs found (and fixed) against a live controller
+
+This integration was originally built with no access to a real UniFi
+controller. Once one became available, three bugs surfaced immediately -
+recorded here because they're the kind of thing that's easy to reintroduce
+and each one is covered by a regression test:
+
+1. **aiohttp silently drops cookies for bare-IP hosts.** UniFi controllers
+   are almost always reached by LAN IP (`192.168.x.x`), not a hostname.
+   aiohttp's default `CookieJar` refuses to store cookies for numeric-IP
+   hosts unless constructed with `unsafe=True` - a conservative RFC 6265
+   read. The login call itself looked completely successful (HTTP 200,
+   `Set-Cookie: TOKEN=...`), but the cookie was never actually stored, so
+   *every* following request came back a plain 401. Fixed by passing
+   `cookie_jar=aiohttp.CookieJar(unsafe=True)` to `async_create_clientsession`
+   in both `config_flow.py` and `__init__.py`. See
+   `tests/test_api.py::test_default_aiohttp_cookie_jar_drops_cookies_for_ip_hosts`.
+2. **CSRF token required on GET, not just POST/PUT/DELETE.** This
+   controller's `/proxy/network/...` reverse proxy rejected `stat/sta` (a
+   plain GET) with a 401 unless `X-CSRF-Token` was present, even though
+   the login itself had already succeeded and most reference clients only
+   attach it to state-changing requests. Fixed by sending the header on
+   every request once we have a token, regardless of method. See
+   `tests/test_api.py::test_csrf_header_sent_on_get_requests_too`.
+3. **`stat/report/*.gw` needs an explicit `attrs` + `start`/`end` body.**
+   POSTing with an empty/`None` body returns HTTP 200 with an empty
+   `data: []` - it *looks* successful, so this was the hardest of the
+   three to notice. Fixed by always sending `attrs: ["time", "wan-rx_bytes",
+   "wan-tx_bytes", "wan-latency_avg"]` plus a `start`/`end` window sized to
+   the report granularity. See
+   `tests/test_api.py::test_report_request_includes_attrs_and_time_range`.
+
+A fourth thing turned out to be a wrong assumption rather than a bug: report
+samples' `wan-rx_bytes` / `wan-tx_bytes` are **per-bucket totals** (bytes
+transferred during that one 5-minute/daily window), not a running lifetime
+counter - so Mbps is `bytes * 8 / bucket_seconds`, not a delta between two
+samples the way some other UniFi API clients' docs describe it.
+
 ## Sensors
 
 | Sensor | Source | Notes |
 |---|---|---|
-| WAN Download / WAN Upload | `stat/report/5minutes.gw`, latest sample | Mbps, `SensorDeviceClass.DATA_RATE` |
-| WAN Latency | `stat/report/5minutes.gw` | ms; **field name needs live confirmation**, see below |
-| WAN Packet Loss | `stat/report/5minutes.gw` | %; **field name needs live confirmation** |
-| Monthly Data Usage | `stat/report/daily.gw`, summed for the current calendar month | GB, with download/upload as attributes |
-| Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute |
-| Connected Clients | `stat/sta` | count |
-| `<AP> <radio> Channel Utilization` | `stat/device` → `radio_table_stats[].cu_total` | one sensor per AP per radio (2.4/5/6GHz), created dynamically |
-| `<AP> <radio> TX Retries` | `stat/device` → `radio_table_stats[].tx_retries` | one sensor per AP per radio |
+| WAN Download / WAN Upload | `stat/report/5minutes.gw`, latest bucket | Mbps, `SensorDeviceClass.DATA_RATE`; confirmed live |
+| WAN Latency | `stat/health` → `uptime_stats.WAN.latency_average` | ms; confirmed live (the report endpoint carries no latency field on the tested controller) |
+| WAN Packet Loss | `stat/report/5minutes.gw` | %; **not confirmed** - no matching field found in the live response tested against, see below |
+| WAN Availability | `stat/health` → `uptime_stats.WAN.availability` | %; the controller's own rolling ping/DNS-monitor success rate - confirmed live |
+| ISP Name | `stat/health` → `isp_name` | confirmed live |
+| Monthly Data Usage | `stat/report/daily.gw`, summed for the current calendar month | GB, with download/upload as attributes; confirmed live |
+| Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute; confirmed live |
+| Connected Clients | `stat/sta` | count; confirmed live |
+| `<AP> <radio> Channel Utilization` | `stat/device` → `radio_table_stats[].cu_total` | one sensor per AP per radio (2.4/5/6GHz), created dynamically, grouped under that AP's own device; confirmed live |
+| `<AP> <radio> TX Retries` | `stat/device` → `radio_table_stats[].tx_retries` | one sensor per AP per radio; confirmed live |
 
-WiFi connectivity success rate (association/authentication/DHCP/DNS %)
-and ISP-info were investigated but **not implemented**: no reliably
-documented, version-stable field for them was found without a live
-controller response to confirm against. `parsing.py` is structured so
-they can be added the same way as the other fields once confirmed.
+WiFi connectivity success rate (association/authentication/DHCP/DNS %) was
+investigated but **not implemented**: not present anywhere in the
+`stat/health`/`stat/device` payloads captured from the test controller.
+`parsing.py` is structured so it can be added the same way as the other
+fields if you find it on your controller version.
 
-## What was verified vs. what still needs a real controller
+## What was verified vs. what still needs checking on your controller
 
-This integration was built **without access to a real UniFi controller**
-(no host, no credentials, no network path available in the environment it
-was developed in). To keep it trustworthy despite that:
+This was tested end-to-end (real login, all endpoints, all sensors except
+WAN Packet Loss populated with live data) against one UniFi OS console
+(UDM-family, controller version 5.1.26, single site). That covers the auth
+flow, CSRF handling, and every endpoint's *shape* well. What it does not
+cover:
 
-- Auth flow, CSRF handling, and endpoint path structure were verified
-  against the `aiounifi` library source and the `Art-of-WiFi/UniFi-API-client`
-  reference implementation, not guessed.
-- All response parsing (`parsing.py`) is defensive: missing/renamed
-  fields resolve to `None` instead of raising, and are unit tested against
-  representative (not officially documented, best-effort) fixture
-  payloads - see `tests/test_parsing.py`.
-- The HTTP client (`api.py`) is unit tested against a mocked controller
-  (`tests/test_api.py`, using `aioresponses`) covering: classic vs.
-  UniFi-OS login, CSRF token capture, session-expiry re-login, and the
-  `stat/report` POST→GET fallback.
-- **Not verified**: exact field names/formats for WAN latency, packet
-  loss, and WiFi success-rate metrics across current controller firmware
-  versions; whether `stat/report/*.gw` accepts POST with an empty body or
-  requires specific `attrs`; whether `radio_table_stats` field names
-  (`cu_total`, `tx_retries`) match your controller version exactly.
+- Classic (non-UniFi-OS) controllers / Cloud Key Gen1 - the classic
+  `/api/login` + `/api/s/<site>/...` code path is implemented and unit
+  tested against mocked responses, but not exercised against a real
+  classic controller.
+- Other UniFi OS console models/firmware versions - field names
+  (`radio_table_stats.cu_total`/`tx_retries`, `wan-rx_bytes`, `isp_name`,
+  `uptime_stats.WAN.*`) may differ on older/newer firmware.
+- **WAN Packet Loss**: no field for this was found in the tested
+  controller's `stat/report` or `stat/health` responses at all (only WAN
+  *latency* and *availability* were present). The sensor is implemented
+  defensively (stays `unavailable` rather than showing 0), but the field
+  name list in `parsing.py::parse_wan_throughput` is still a guess.
 
-**Before relying on this in production**, enable debug logging
-(`custom_components.unifi_network_plus: debug` in `configuration.yaml`)
-after first setup and compare the raw values against what the UniFi
-Network app's dashboard shows, then open an issue/adjust `parsing.py` for
-any field names that differ on your controller version.
+If any of your sensors stay `unavailable` or look wrong, enable debug
+logging (`custom_components.unifi_network_plus: debug` in
+`configuration.yaml`) and compare against the UniFi Network app's own
+dashboard, then adjust the field-name candidates in `parsing.py`.
 
 ## Installation
 
@@ -129,10 +176,16 @@ You will need:
 **Recommended: create a dedicated local read-only account** for this
 integration rather than reusing your Ubiquiti cloud/admin login. In the
 UniFi Network app: Settings → Admins → Add Admin → "Restrict to local
-access only", role "Viewer" (read-only) is sufficient for everything this
-integration reads. This limits the blast radius if the credentials stored
-in Home Assistant were ever compromised, and avoids sending cloud SSO
-credentials to a local integration at all.
+access only", "View Only" permissions on Network/Control Plane is
+sufficient for everything this integration reads. This limits the blast
+radius if the credentials stored in Home Assistant were ever compromised,
+and avoids sending cloud SSO credentials to a local integration at all.
+
+Note: the controller applies a short login-attempt rate limit
+(`AUTHENTICATION_FAILED_LIMIT_REACHED`, HTTP 429) after a handful of failed
+logins in quick succession - if you hit that while testing credentials,
+wait a minute or two before retrying rather than repeatedly resubmitting
+the config flow.
 
 Config flow fields:
 
@@ -164,21 +217,18 @@ pip install -r requirements-test.txt
 pytest -q
 ```
 
-## Roadmap / next steps for the user
+## Roadmap
 
-1. Add the integration against your real controller and enable debug
-   logging for the first few polling cycles.
-2. Compare `WAN Latency` / `WAN Packet Loss` sensor values (if they show
-   up at all - they may stay `unavailable` if your controller uses
-   different field names) against the UniFi Network app's dashboard, and
-   report/adjust the candidate field lists in `parsing.py::parse_wan_throughput`
-   if needed.
-3. Check that `radio_table_stats` values for your AP models line up with
-   the app's Radio tab; adjust `parsing.py::parse_devices` if a field name
-   differs.
-4. If useful, extend `parsing.py`/`sensor.py` with the still-missing WiFi
-   connectivity success-rate and ISP-info metrics once you can see the raw
-   `stat/health`/`stat/device` payload shape from your own controller.
+1. Validate against a classic (non-UniFi-OS) controller and a second UniFi
+   OS firmware version/model to firm up the "what still needs checking"
+   list above.
+2. Find and wire up a real WAN Packet Loss field, if one exists on some
+   controller version (`parsing.py::parse_wan_throughput`'s candidate list
+   is ready for it).
+3. Consider surfacing the per-monitor detail already present in
+   `uptime_stats.WAN.monitors` (e.g. individual ping.ui.com/1.1.1.1/
+   8.8.8.8 latency, and the WAN2 failover subsystem seen on dual-WAN
+   setups) as attributes on the WAN Availability sensor.
 
 ## License
 

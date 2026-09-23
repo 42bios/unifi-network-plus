@@ -33,6 +33,8 @@ async def async_setup_entry(
         WanUploadSensor(entry, coordinator),
         WanLatencySensor(entry, coordinator),
         WanPacketLossSensor(entry, coordinator),
+        WanAvailabilitySensor(entry, coordinator),
+        IspNameSensor(entry, coordinator),
         MonthlyUsageSensor(entry, coordinator),
         TopClientsSensor(entry, coordinator),
         ConnectedClientsSensor(entry, coordinator),
@@ -146,6 +148,49 @@ class WanPacketLossSensor(UniFiBaseSensor):
         return super().available and self.native_value is not None
 
 
+class WanAvailabilitySensor(UniFiBaseSensor):
+    """WAN uptime-monitor availability (the controller's own ping/DNS probe
+    success rate over its rolling window - the closest equivalent this
+    controller exposes to a "connectivity success rate")."""
+
+    _attr_translation_key = "wan_availability"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator) -> None:
+        super().__init__(entry, coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_wan_availability"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.data.wan_health.availability_percent if self.coordinator.data else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
+class IspNameSensor(UniFiBaseSensor):
+    """Name of the ISP the gateway's WAN connection reports."""
+
+    _attr_translation_key = "isp_name"
+    _attr_icon = "mdi:web"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator) -> None:
+        super().__init__(entry, coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_isp_name"
+
+    @property
+    def native_value(self) -> str | None:
+        return self.coordinator.data.wan_health.isp_name if self.coordinator.data else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
 class MonthlyUsageSensor(UniFiBaseSensor):
     """Total WAN data usage for the current calendar month."""
 
@@ -227,7 +272,16 @@ class ConnectedClientsSensor(UniFiBaseSensor):
 
 
 class RadioBaseSensor(UniFiBaseSensor):
-    """Base for a per-AP-radio sensor."""
+    """Base for a per-AP-radio sensor.
+
+    Unlike the controller-level sensors (grouped under the single
+    "Network Controller" device via ``UniFiBaseSensor.device_info``), these
+    are grouped under a device entry for the individual AP itself - so e.g.
+    "Living Room AP"'s two radio sensors show up together under that AP in
+    the Home Assistant UI, linked back to the controller via ``via_device``,
+    the same pattern the core ``unifi`` integration uses for its own
+    per-device entities.
+    """
 
     def __init__(
         self,
@@ -251,12 +305,36 @@ class RadioBaseSensor(UniFiBaseSensor):
                     return radio
         return None
 
+    def _find_device(self):
+        if not self.coordinator.data:
+            return None
+        for device in self.coordinator.data.devices:
+            if device.mac == self._device_mac:
+                return device
+        return None
+
     def _find_device_name(self) -> str:
-        if self.coordinator.data:
-            for device in self.coordinator.data.devices:
-                if device.mac == self._device_mac:
-                    return device.name
-        return self._device_mac
+        device = self._find_device()
+        return device.name if device else self._device_mac
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        device = self._find_device()
+        return {
+            "identifiers": {(DOMAIN, f"{self._entry.entry_id}_{self._device_mac}")},
+            "name": device.name if device else self._device_mac,
+            "manufacturer": MANUFACTURER,
+            "model": (device.model if device else None) or "UniFi Access Point",
+            # HA logs a (non-fatal until 2027.8.0) deprecation warning for
+            # this key in favour of "via_device_id" - which needs the
+            # controller device's *registry id*, not something an entity
+            # can know ahead of a device_registry lookup keyed by these
+            # identifiers. Leaving the (domain, identifier) tuple form here
+            # until there's a documented pattern for entities to resolve
+            # that id themselves without an extra round trip on every
+            # device_info access.
+            "via_device": (DOMAIN, self._entry.entry_id),
+        }
 
 
 class RadioChannelUtilizationSensor(RadioBaseSensor):

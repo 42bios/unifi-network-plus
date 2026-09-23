@@ -13,6 +13,23 @@ import pytest
 from aioresponses import aioresponses
 
 
+def _calls_for(mocked: aioresponses, method: str, url_suffix: str):
+    """Find recorded aioresponses calls whose URL path ends with url_suffix.
+
+    aioresponses keys ``mocked.requests`` by ``(method, yarl.URL)`` with the
+    default HTTPS port stripped, which is brittle to hardcode a matching
+    literal for - matching on the path suffix instead keeps these tests
+    readable without depending on that formatting detail.
+    """
+    matches = [
+        calls
+        for (call_method, url), calls in mocked.requests.items()
+        if call_method == method and str(url).endswith(url_suffix)
+    ]
+    assert matches, f"no recorded {method} call ending in {url_suffix!r}"
+    return matches[0]
+
+
 @pytest.mark.asyncio
 async def test_login_classic_controller(api_module) -> None:
     """Root URL not 200 -> classic controller -> /api/login, no CSRF needed."""
@@ -172,3 +189,89 @@ def test_extract_csrf_from_jwt(api_module) -> None:
 
 def test_extract_csrf_from_jwt_malformed_returns_none(api_module) -> None:
     assert api_module._extract_csrf_from_jwt("not-a-jwt") is None
+
+
+@pytest.mark.asyncio
+async def test_csrf_header_sent_on_get_requests_too(api_module) -> None:
+    """Regression test for a real bug found against a live UDM controller:
+
+    the controller rejected GET requests (e.g. stat/sta) with a generic
+    401 unless X-CSRF-Token was present, even though the UniFi API docs and
+    most reference clients only send it on state-changing requests. Login
+    itself always succeeded (200 + Set-Cookie), which made this look like
+    a broken/expired session rather than a missing header on reads.
+    """
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/s/default/stat/sta",
+                status=200,
+                payload={"data": []},
+            )
+            await client.get_clients()
+
+            calls = _calls_for(mocked, "GET", "stat/sta")
+            assert calls[-1].kwargs["headers"]["X-CSRF-Token"] == "csrf-123"
+
+
+@pytest.mark.asyncio
+async def test_report_request_includes_attrs_and_time_range(api_module) -> None:
+    """Regression test: POSTing stat/report/*.gw without an explicit
+    ``attrs`` list and ``start``/``end`` range returns HTTP 200 with an
+    empty ``data: []`` on a real controller - i.e. it looks successful but
+    silently yields nothing to parse, rather than raising an error we'd
+    notice.
+    """
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post("https://udm.local:443/api/auth/login", status=200, payload={})
+            mocked.post(
+                "https://udm.local:443/proxy/network/api/s/default/stat/report/5minutes.gw",
+                status=200,
+                payload={"data": [{"time": 1}]},
+            )
+            await client.get_wan_report_5min()
+
+            calls = _calls_for(mocked, "POST", "stat/report/5minutes.gw")
+            body = calls[-1].kwargs["json"]
+            assert body["attrs"] == api_module._REPORT_ATTRS
+            assert body["start"] < body["end"]
+
+
+@pytest.mark.asyncio
+async def test_default_aiohttp_cookie_jar_drops_cookies_for_ip_hosts() -> None:
+    """Documents the real root cause of the "login succeeds, every
+    following request 401s" bug found against a live controller reached by
+    bare IP: aiohttp's default ``CookieJar`` refuses to store cookies for
+    numeric-IP hosts (a conservative RFC 6265 interpretation), so the
+    UniFi OS ``TOKEN`` session cookie set on login was silently discarded.
+
+    This isn't testable through ``UniFiClient`` in isolation (the fix lives
+    in how the integration constructs its aiohttp session in
+    __init__.py/config_flow.py, which import Home Assistant and can't be
+    loaded in this HA-less test environment) - this test instead pins down
+    the underlying aiohttp behaviour those two call sites rely on, so a
+    change in that assumption (e.g. an aiohttp upgrade) fails loudly here
+    instead of silently reintroducing the bug.
+    """
+    from yarl import URL
+
+    ip_url = URL("https://192.168.1.10/")
+
+    unsafe_jar = aiohttp.CookieJar(unsafe=True)
+    unsafe_jar.update_cookies({"TOKEN": "abc"}, response_url=ip_url)
+    assert "TOKEN" in unsafe_jar.filter_cookies(ip_url)
+
+    default_jar = aiohttp.CookieJar()
+    default_jar.update_cookies({"TOKEN": "abc"}, response_url=ip_url)
+    assert "TOKEN" not in default_jar.filter_cookies(ip_url)

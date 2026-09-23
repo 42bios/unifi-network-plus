@@ -41,6 +41,8 @@
       "wan_upload": { "name": "WAN Upload" },
       "wan_latency": { "name": "WAN Latency" },
       "wan_packet_loss": { "name": "WAN Packet Loss" },
+      "wan_availability": { "name": "WAN Availability" },
+      "isp_name": { "name": "ISP Name" },
       "monthly_usage": { "name": "Monthly Data Usage" },
       "top_clients": { "name": "Top Clients" },
       "connected_clients": { "name": "Connected Clients" },

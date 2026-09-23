@@ -1,8 +1,9 @@
 """Unit tests for parsing.py using fixture-style raw UniFi JSON payloads.
 
 These do not require networking or Home Assistant - they exercise the pure
-parsing functions directly against representative (best-effort, since no
-live controller was available) response shapes.
+parsing functions directly against representative response shapes (the
+``stat/health`` "wan" subsystem fixtures below are trimmed from an actual
+live UDM-family controller response, not guessed).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from parsing import (  # noqa: E402
     parse_health,
     parse_monthly_usage,
     parse_top_clients,
+    parse_wan_health,
     parse_wan_throughput,
 )
 
@@ -30,18 +32,36 @@ def test_parse_wan_throughput_empty() -> None:
 
 
 def test_parse_wan_throughput_picks_latest_and_converts_units() -> None:
+    # UniFi report samples carry the byte total *for that one bucket*, not a
+    # running lifetime counter (confirmed against a live controller - values
+    # were observed to vary independently between consecutive buckets).
     samples = [
-        {"time": 1000, "wan-rx_bytes-r": 1_000_000, "wan-tx_bytes-r": 500_000, "wan-latency_avg": 12.5},
-        {"time": 2000, "wan-rx_bytes-r": 2_000_000, "wan-tx_bytes-r": 250_000, "wan-latency_avg": 8.0},
+        {
+            "time": 0,
+            "wan-rx_bytes": 300_000_000,
+            "wan-tx_bytes": 37_500_000,
+            "wan-latency_avg": 12.5,
+        },
+        {
+            "time": 300_000,  # later bucket wins
+            "wan-rx_bytes": 600_000_000,  # * 8 / 1e6 / 300s -> 16 Mbps
+            "wan-tx_bytes": 75_000_000,  # * 8 / 1e6 / 300s -> 2 Mbps
+            "wan-latency_avg": 8.0,
+        },
     ]
     result = parse_wan_throughput(samples)
-    # Latest sample (time=2000) should win.
-    assert result.timestamp == 2000
-    # 2_000_000 bytes/s * 8 / 1e6 = 16 Mbps
+    assert result.timestamp == 300_000
     assert result.download_mbps == 16.0
-    # 250_000 bytes/s * 8 / 1e6 = 2 Mbps
     assert result.upload_mbps == 2.0
     assert result.latency_ms == 8.0
+
+
+def test_parse_wan_throughput_respects_bucket_seconds() -> None:
+    # An hourly-report sample covers a 3600s bucket, not 300s.
+    samples = [{"time": 0, "wan-rx_bytes": 3_600_000_000, "wan-tx_bytes": 0}]
+    result = parse_wan_throughput(samples, bucket_seconds=3600)
+    # 3_600_000_000 * 8 / 1e6 / 3600 = 8 Mbps
+    assert result.download_mbps == 8.0
 
 
 def test_parse_wan_throughput_missing_fields_returns_none_not_crash() -> None:
@@ -143,3 +163,48 @@ def test_parse_health_basic() -> None:
     assert parsed[0].num_user == 12
     assert parsed[1].status == "warning"
     assert parsed[1].num_user is None
+
+
+# Trimmed from an actual live UDM-family controller's stat/health response -
+# not a guess. Only the fields parse_wan_health() reads are kept.
+_LIVE_WAN_HEALTH_FIXTURE = {
+    "subsystem": "wan",
+    "status": "ok",
+    "wan_ip": "203.0.113.42",
+    "isp_name": "Example Municipal Utility",
+    "rx_bytes-r": 410688,
+    "tx_bytes-r": 412003,
+    "uptime_stats": {
+        "WAN": {
+            "availability": 100.0,
+            "latency_average": 8,
+        },
+        "WAN2": {
+            "availability": 0.0,
+        },
+    },
+}
+
+
+def test_parse_wan_health_extracts_isp_latency_and_live_rate() -> None:
+    result = parse_wan_health([_LIVE_WAN_HEALTH_FIXTURE, {"subsystem": "wlan", "status": "ok"}])
+    assert result.isp_name == "Example Municipal Utility"
+    assert result.availability_percent == 100.0
+    assert result.latency_ms == 8.0
+    # 410688 bytes/s * 8 / 1e6 = 3.29 Mbps
+    assert result.rx_rate_mbps == 3.29
+    assert result.tx_rate_mbps == 3.3
+
+
+def test_parse_wan_health_no_wan_subsystem_returns_empty() -> None:
+    result = parse_wan_health([{"subsystem": "wlan", "status": "ok"}])
+    assert result.isp_name is None
+    assert result.availability_percent is None
+    assert result.latency_ms is None
+
+
+def test_parse_wan_health_missing_uptime_stats_does_not_crash() -> None:
+    result = parse_wan_health([{"subsystem": "wan", "isp_name": "Some ISP"}])
+    assert result.isp_name == "Some ISP"
+    assert result.availability_percent is None
+    assert result.latency_ms is None
