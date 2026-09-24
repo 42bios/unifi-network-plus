@@ -329,6 +329,65 @@ class UniFiClient:
         return await self._request("GET", suffix)
 
     # ------------------------------------------------------------------
+    # Write/control endpoints - request shapes cross-checked against
+    # aiounifi's DeviceLocateRequest/DeviceSetPoePortModeRequest (the same
+    # library Home Assistant's core "unifi" integration uses), which is
+    # already installed alongside Home Assistant - not guessed.
+    # ------------------------------------------------------------------
+
+    async def set_locate(self, mac: str, enable: bool) -> None:
+        """Start/stop a device's locate (blink LED) mode.
+
+        Purely cosmetic - no functional effect on the device.
+        """
+        await self._request(
+            "POST",
+            "cmd/devmgr",
+            json_body={"cmd": "set-locate" if enable else "unset-locate", "mac": mac},
+        )
+
+    async def set_port_poe_mode(self, switch_mac: str, port_idx: int, mode: str) -> None:
+        """Set one switch port's PoE mode ("auto", "off", "24v", "passthrough").
+
+        Read-modify-write: re-fetches the current device (including its
+        live ``port_overrides``) immediately before writing, rather than
+        reusing a possibly-stale coordinator snapshot, and only touches the
+        one port's ``poe_mode`` - every other port's override is sent back
+        unchanged, matching aiounifi's approach of never reconstructing
+        overrides from scratch.
+        """
+        devices = await self.get_devices()
+        device = next((d for d in devices if d.get("mac") == switch_mac), None)
+        if device is None:
+            raise UniFiApiError(f"Device {switch_mac} not found")
+        device_id = device.get("_id")
+        if not device_id:
+            raise UniFiApiError(f"Device {switch_mac} has no _id")
+
+        new_overrides: list[dict[str, Any]] = []
+        found = False
+        for override in device.get("port_overrides") or []:
+            override = dict(override)
+            if override.get("port_idx") == port_idx:
+                override["poe_mode"] = mode
+                found = True
+            new_overrides.append(override)
+
+        if not found:
+            new_override: dict[str, Any] = {"port_idx": port_idx, "poe_mode": mode}
+            port_table = device.get("port_table") or []
+            port_entry = next((p for p in port_table if p.get("port_idx") == port_idx), None)
+            if port_entry and port_entry.get("portconf_id"):
+                new_override["portconf_id"] = port_entry["portconf_id"]
+            new_overrides.append(new_override)
+
+        await self._request(
+            "PUT",
+            f"rest/device/{device_id}",
+            json_body={"port_overrides": new_overrides},
+        )
+
+    # ------------------------------------------------------------------
     # Public data endpoints
     # ------------------------------------------------------------------
 

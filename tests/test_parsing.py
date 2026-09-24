@@ -464,6 +464,32 @@ def test_parse_devices_overheating_true() -> None:
     assert device.overheating is True
 
 
+def test_parse_devices_locating() -> None:
+    device = parse_devices([{**_LIVE_SWITCH_DEVICE_FIXTURE, "locating": True}])[0]
+    assert device.locating is True
+    device = parse_devices([{**_LIVE_SWITCH_DEVICE_FIXTURE, "locating": False}])[0]
+    assert device.locating is False
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]  # key absent
+    assert device.locating is None
+
+
+def test_parse_devices_port_poe_mode() -> None:
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
+    # Port 1 has no poe_mode key in the fixture -> not PoE-capable.
+    assert device.ports[0].poe_mode is None
+
+    fixture = {
+        **_LIVE_SWITCH_DEVICE_FIXTURE,
+        "port_table": [
+            {"port_idx": 1, "up": True, "poe_mode": "auto", "name": "Port 1"},
+            {"port_idx": 2, "up": True, "poe_mode": "off", "name": "Port 2"},
+        ],
+    }
+    device = parse_devices([fixture])[0]
+    assert device.ports[0].poe_mode == "auto"
+    assert device.ports[1].poe_mode == "off"
+
+
 def test_parse_devices_non_switch_has_no_ports() -> None:
     device = parse_devices([_LIVE_AP_DEVICE_FIXTURE])[0]
     assert device.ports == []

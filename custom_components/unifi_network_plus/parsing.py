@@ -232,6 +232,9 @@ class PortStat:
     # "GE" (copper Gigabit Ethernet), "SFP+" (fibre/DAC uplink), etc. -
     # confirmed both values present on a live switch's port_table.
     media: str | None
+    # "auto"/"off"/"24v"/"passthrough" - only present on PoE-capable ports
+    # (confirmed absent on non-PoE ports, matching poe_power_watts).
+    poe_mode: str | None
 
 
 @dataclass(frozen=True)
@@ -271,6 +274,8 @@ class DeviceInfo:
     # bool - kept nullable so the entity can go unavailable instead of
     # guessing "not overheating".
     overheating: bool | None
+    # Whether the device's locate (blink LED) mode is currently active.
+    locating: bool | None
     radios: list[RadioStat] = field(default_factory=list)
     ports: list[PortStat] = field(default_factory=list)
 
@@ -358,6 +363,7 @@ def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
                 rx_mbps=round(rx_rate * 8 / 1_000_000, 3) if rx_rate is not None else None,
                 tx_mbps=round(tx_rate * 8 / 1_000_000, 3) if tx_rate is not None else None,
                 media=p.get("media"),
+                poe_mode=p.get("poe_mode"),
             )
         )
     return result
@@ -441,6 +447,7 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
                 firmware_latest_version=firmware_latest_version,
                 anomalies=anomalies,
                 overheating=bool(overheating_raw) if overheating_raw is not None else None,
+                locating=bool(device.get("locating")) if device.get("locating") is not None else None,
                 radios=radios,
                 ports=ports,
             )

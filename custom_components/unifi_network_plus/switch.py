@@ -1,0 +1,180 @@
+"""Switch (control) entities for UniFi Network+.
+
+Unlike every other platform in this integration, these entities write to
+the controller instead of only reading from it. Kept in their own file and
+deliberately small in scope:
+
+- ``LocateSwitch``: toggles a device's locate (blink LED) mode. Purely
+  cosmetic, fully reversible, no functional effect on the device.
+- ``PoePortSwitch``: toggles a switch port's PoE mode between "off" and
+  "auto". This can disconnect whatever is actually plugged into that port
+  (an AP, a camera, ...) - disabled by default like the other per-port
+  entities, and the request shape was cross-checked against aiounifi's
+  ``DeviceSetPoePortModeRequest`` (see api.py) rather than guessed.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from . import RUNTIME_COORDINATOR
+from .const import DOMAIN, MANUFACTURER
+from .coordinator import UniFiNetworkPlusCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up locate + PoE-port control switches (discovered dynamically,
+    same pattern as sensor.py/binary_sensor.py).
+    """
+    coordinator: UniFiNetworkPlusCoordinator = hass.data[DOMAIN][entry.entry_id][RUNTIME_COORDINATOR]
+
+    known_device_macs: set[str] = set()
+    known_port_keys: set[tuple[str, int]] = set()
+
+    def _discover_new_entities() -> None:
+        if not coordinator.data:
+            return
+        new_entities: list[CoordinatorEntity] = []
+        for device in coordinator.data.devices:
+            if device.mac not in known_device_macs:
+                known_device_macs.add(device.mac)
+                new_entities.append(LocateSwitch(entry, coordinator, device.mac))
+            for port in device.ports:
+                if port.poe_mode is None:
+                    continue  # not a PoE-capable port
+                key = (device.mac, port.port_idx)
+                if key not in known_port_keys:
+                    known_port_keys.add(key)
+                    new_entities.append(PoePortSwitch(entry, coordinator, device.mac, port.port_idx))
+        if new_entities:
+            async_add_entities(new_entities)
+
+    _discover_new_entities()
+    entry.async_on_unload(coordinator.async_add_listener(_discover_new_entities))
+
+
+class _DeviceControlBase(CoordinatorEntity[UniFiNetworkPlusCoordinator], SwitchEntity):
+    """Shared device lookup/device_info for both switch types here."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator, device_mac: str) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._device_mac = device_mac
+
+    def _find_device(self):
+        if not self.coordinator.data:
+            return None
+        for device in self.coordinator.data.devices:
+            if device.mac == self._device_mac:
+                return device
+        return None
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        device = self._find_device()
+        return {
+            "identifiers": {(DOMAIN, f"{self._entry.entry_id}_{self._device_mac}")},
+            "name": device.name if device else self._device_mac,
+            "manufacturer": MANUFACTURER,
+            "model": (device.model if device else None) or "UniFi Device",
+            "via_device": (DOMAIN, self._entry.entry_id),
+        }
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._find_device() is not None
+
+
+class LocateSwitch(_DeviceControlBase):
+    """Blink a device's status LED to help find it - purely cosmetic."""
+
+    _attr_translation_key = "locate"
+    _attr_icon = "mdi:map-marker-radius"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator, device_mac: str) -> None:
+        super().__init__(entry, coordinator, device_mac)
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_locate"
+
+    @property
+    def is_on(self) -> bool | None:
+        device = self._find_device()
+        return device.locating if device else None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_locate(self._device_mac, True)
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_locate(self._device_mac, False)
+        await self.coordinator.async_request_refresh()
+
+
+class PoePortSwitch(_DeviceControlBase):
+    """Turn PoE power on ("auto") or off for one switch port.
+
+    Disabled by default: flipping the wrong port cuts power to whatever is
+    plugged into it (an AP, a camera, ...), so this should only be enabled
+    deliberately for a specific known port, same as the other per-port
+    entities (Link Speed, PoE Power, Download, Upload).
+    """
+
+    _attr_translation_key = "port_poe_switch"
+    _attr_icon = "mdi:ethernet"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac)
+        self._port_idx = port_idx
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_port{port_idx}_poe_switch"
+        port = self._find_port()
+        self._attr_translation_placeholders = {"port": port.name if port else f"Port {port_idx}"}
+
+    def _find_port(self):
+        device = self._find_device()
+        if not device:
+            return None
+        for port in device.ports:
+            if port.port_idx == self._port_idx:
+                return port
+        return None
+
+    @property
+    def is_on(self) -> bool | None:
+        port = self._find_port()
+        return port.poe_mode != "off" if port and port.poe_mode is not None else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._find_port() is not None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_port_poe_mode(self._device_mac, self._port_idx, "auto")
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_port_poe_mode(self._device_mac, self._port_idx, "off")
+        await self.coordinator.async_request_refresh()

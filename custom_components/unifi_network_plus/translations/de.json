@@ -152,6 +152,14 @@
       "overheating": {
         "name": "Überhitzung"
       }
+    },
+    "switch": {
+      "locate": {
+        "name": "Orten"
+      },
+      "port_poe_switch": {
+        "name": "{port} PoE"
+      }
     }
   }
 }

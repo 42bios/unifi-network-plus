@@ -275,3 +275,141 @@ async def test_default_aiohttp_cookie_jar_drops_cookies_for_ip_hosts() -> None:
     default_jar = aiohttp.CookieJar()
     default_jar.update_cookies({"TOKEN": "abc"}, response_url=ip_url)
     assert "TOKEN" not in default_jar.filter_cookies(ip_url)
+
+
+@pytest.mark.asyncio
+async def test_set_locate_posts_correct_command(api_module) -> None:
+    """Request shape cross-checked against aiounifi's DeviceLocateRequest."""
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.post(
+                "https://udm.local:443/proxy/network/api/s/default/cmd/devmgr",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_locate("aa:bb:cc:dd:ee:ff", True)
+
+        calls = _calls_for(mocked, "POST", "/cmd/devmgr")
+        assert calls[0].kwargs["json"] == {"cmd": "set-locate", "mac": "aa:bb:cc:dd:ee:ff"}
+
+
+@pytest.mark.asyncio
+async def test_set_locate_off_sends_unset_command(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.post(
+                "https://udm.local:443/proxy/network/api/s/default/cmd/devmgr",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_locate("aa:bb:cc:dd:ee:ff", False)
+
+        calls = _calls_for(mocked, "POST", "/cmd/devmgr")
+        assert calls[0].kwargs["json"] == {"cmd": "unset-locate", "mac": "aa:bb:cc:dd:ee:ff"}
+
+
+@pytest.mark.asyncio
+async def test_set_port_poe_mode_updates_only_target_port(api_module) -> None:
+    """The read-modify-write must send back every other port's override
+    untouched (only the target port_idx's poe_mode changes), matching
+    aiounifi's DeviceSetPoePortModeRequest behaviour.
+    """
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/s/default/stat/device",
+                status=200,
+                payload={
+                    "data": [
+                        {
+                            "mac": "sw:mac",
+                            "_id": "device-id-123",
+                            "port_overrides": [
+                                {"port_idx": 1, "poe_mode": "auto", "name": "Port 1"},
+                                {"port_idx": 9, "poe_mode": "auto", "name": "Port 9"},
+                            ],
+                            "port_table": [
+                                {"port_idx": 1},
+                                {"port_idx": 9, "portconf_id": "conf-9"},
+                            ],
+                        }
+                    ]
+                },
+            )
+            mocked.put(
+                "https://udm.local:443/proxy/network/api/s/default/rest/device/device-id-123",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_port_poe_mode("sw:mac", 9, "off")
+
+        calls = _calls_for(mocked, "PUT", "/rest/device/device-id-123")
+        body = calls[0].kwargs["json"]
+        overrides = {o["port_idx"]: o for o in body["port_overrides"]}
+        assert overrides[1]["poe_mode"] == "auto"  # untouched
+        assert overrides[9]["poe_mode"] == "off"  # updated
+
+
+@pytest.mark.asyncio
+async def test_set_port_poe_mode_adds_override_when_missing(api_module) -> None:
+    """A port with no existing override entry gets a new one appended,
+    carrying its portconf_id from port_table if present.
+    """
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/s/default/stat/device",
+                status=200,
+                payload={
+                    "data": [
+                        {
+                            "mac": "sw:mac",
+                            "_id": "device-id-123",
+                            "port_overrides": [],
+                            "port_table": [{"port_idx": 2, "portconf_id": "conf-2"}],
+                        }
+                    ]
+                },
+            )
+            mocked.put(
+                "https://udm.local:443/proxy/network/api/s/default/rest/device/device-id-123",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_port_poe_mode("sw:mac", 2, "auto")
+
+        calls = _calls_for(mocked, "PUT", "/rest/device/device-id-123")
+        body = calls[0].kwargs["json"]
+        assert body["port_overrides"] == [{"port_idx": 2, "poe_mode": "auto", "portconf_id": "conf-2"}]

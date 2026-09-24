@@ -7,7 +7,7 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**399 entities** as of the latest release (vs. the core `unifi`
+**461 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment - mostly the per-switch-port
 entities below, which are disabled by default and don't clutter a fresh
 install): WAN throughput, latency, ISP/availability, the controller's own
@@ -19,9 +19,11 @@ gateway temperature/storage, switch PoE draw/active-port-count and one
 Firmware update entity; per-switch-port link speed (with connection type:
 copper/fibre/DAC), PoE power and live download/upload throughput
 (disabled by default - enable individual ports from Settings -> Entities
-if you want them); and a real-time-connection diagnostic sensor backed by
-the controller's WebSocket event stream, used to trigger faster refreshes
-on top of the normal poll interval (see "Polling frequency" below). New
+if you want them); a real-time-connection diagnostic sensor backed by the
+controller's WebSocket event stream, used to trigger faster refreshes on
+top of the normal poll interval (see "Polling frequency" below); and
+`switch` entities to locate (blink) a device or control per-port PoE
+power (write operations - see the permissions note in Setup). New
 devices (a newly adopted AP or switch) are picked up automatically on the
 next poll, no restart needed.
 
@@ -202,6 +204,13 @@ want to graph one specific port.
 |---|---|
 | Realtime Connection (`binary_sensor`) | Whether the WebSocket event stream (see [Polling frequency](#polling-frequency---is-this-live)) is currently connected. Purely informational - the integration works identically either way, just faster when this is `on`. |
 
+### Control (`switch`, write operations - see permissions note above)
+
+| Entity | What it does |
+|---|---|
+| Locate | Starts/stops a device's locate (blink LED) mode. Purely cosmetic, fully reversible, enabled by default. |
+| Port PoE (per switch port, **disabled by default**) | Turns PoE power on ("auto") or off for one port. This can disconnect whatever is plugged into that port (an AP, camera, ...) - only enable it for a specific port you've deliberately chosen to control. |
+
 The Firmware update entity is **read-only**: it reports whether an update
 is available (`installed_version`/`latest_version`), but does not
 implement installing one. Triggering a firmware flash on network
@@ -302,13 +311,23 @@ You will need:
 - A **local** account with (at minimum) read access to the site.
 - The site name (`default` unless you use multiple sites).
 
-**Recommended: create a dedicated local read-only account** for this
-integration rather than reusing your Ubiquiti cloud/admin login. In the
-UniFi Network app: Settings → Admins → Add Admin → "Restrict to local
-access only", "View Only" permissions on Network/Control Plane is
-sufficient for everything this integration reads. This limits the blast
-radius if the credentials stored in Home Assistant were ever compromised,
-and avoids sending cloud SSO credentials to a local integration at all.
+**Recommended: create a dedicated local account** for this integration
+rather than reusing your Ubiquiti cloud/admin login. In the UniFi Network
+app: Settings → Admins → Add Admin → "Restrict to local access only".
+This limits the blast radius if the credentials stored in Home Assistant
+were ever compromised, and avoids sending cloud SSO credentials to a
+local integration at all.
+
+**"View Only" vs. "Full Management" permissions - confirmed live:**
+"View Only" is sufficient for every sensor/binary_sensor/update entity
+(everything this integration only reads). The **Locate** and **PoE Port**
+`switch` entities are write operations and need "Full Management"
+(Admin) rights on the site - tested against a "View Only" account and
+the controller correctly rejected both with HTTP 403, which this
+integration surfaces as a clear log error rather than a silent failure.
+If you don't plan to use those two control entities, "View Only" remains
+the safer default; grant "Full Management" only if you specifically want
+device locate/PoE control from Home Assistant.
 
 Note: the controller applies a short login-attempt rate limit
 (`AUTHENTICATION_FAILED_LIMIT_REACHED`, HTTP 429) after a handful of failed
@@ -353,7 +372,7 @@ pytest -q
 
 The intent is for this integration to eventually be a complete
 replacement for the core `unifi` integration, not just a companion to it -
-it's already past core's 281-entity count for this environment (399, most
+it's already past core's 281-entity count for this environment (461, most
 of that from the disabled-by-default per-port entities), though entity
 *count* alone isn't the same as feature parity - client presence tracking
 and write/control operations below are the real remaining gap.
@@ -376,22 +395,35 @@ skipping that step once already cost a debugging session):
    authorized clients, wired vs. wireless reconnect behavior) that's easy
    to get subtly wrong in a first pass. Needs its own focused session
    rather than being bolted onto an unrelated change.
-3. **Per-port switch entities** for the things core `unifi` exposes as
-   controllable (PoE port on/off) - would need a `switch` platform and,
-   unlike everything so far, starts writing to the network instead of only
-   reading from it. Needs explicit user sign-off on the risk/blast-radius
-   trade-off before starting, not just a design decision made here.
+3. **Done**: `switch` entities for device Locate (blink LED) and per-port
+   PoE on/off, added with explicit user sign-off on the risk/blast-radius
+   trade-off (write operations, unlike everything before this). Verified
+   live: request shapes cross-checked against `aiounifi`'s own
+   `DeviceLocateRequest`/`DeviceSetPoePortModeRequest` (already installed
+   alongside Home Assistant), and a real attempt against the test
+   controller's "View Only" account correctly came back HTTP 403 -
+   confirming both entities need a "Full Management" local account
+   (see Setup) and that this integration surfaces that as a clear error
+   rather than a silent no-op. Not yet verified: an actual successful
+   toggle against a "Full Management" account (the test account here is
+   intentionally "View Only" - a live 403 is a good sign the request
+   reaches the controller and is authenticated, but the write path itself
+   awaits a controller with the right permissions to confirm end-to-end).
 4. Validate against a classic (non-UniFi-OS) controller and a second UniFi
    OS firmware version/model to firm up the "what still needs checking"
    list above - the further this grows, the more that matters.
 5. Find and wire up a real WAN Packet Loss field, if one exists on some
    controller version (`parsing.py::parse_wan_throughput`'s candidate list
    is ready for it); consider surfacing per-monitor WAN detail
-   (`uptime_stats.WAN.monitors`, the WAN2 failover subsystem) as
-   attributes on the WAN Availability sensor.
+   (`uptime_stats.WAN.monitors`) as attributes on the WAN Availability
+   sensor.
 6. Revisit whether the Firmware `update` entity should support
    `async_install` once the rest of this list is solid - see the caveat
    in the Sensors section above for why it doesn't yet.
+7. WiFi network (SSID) enable/disable `switch` - deliberately deferred:
+   unlike PoE (one port, one device), disabling an SSID drops every client
+   connected to it at once. Revisit if wanted, with the same live-tested,
+   sign-off-first approach as PoE control above.
 
 ## License
 
