@@ -21,6 +21,17 @@ def _num(value: Any) -> float | None:
         return None
 
 
+def _satisfaction(value: Any) -> float | None:
+    """Parse a UniFi "satisfaction" percentage.
+
+    Confirmed against live data: the controller uses ``-1`` as a sentinel
+    for "no data yet" (e.g. a radio/device with zero connected clients),
+    not a real negative percentage - treat it the same as missing.
+    """
+    num = _num(value)
+    return None if num is None or num < 0 else num
+
+
 @dataclass(frozen=True)
 class WanThroughput:
     """Most recent WAN throughput/latency sample."""
@@ -181,7 +192,14 @@ class RadioStat:
 
 @dataclass(frozen=True)
 class DeviceInfo:
-    """Parsed device (AP/switch/gateway) entry from stat/device."""
+    """Parsed device (AP/switch/gateway) entry from stat/device.
+
+    The extra per-type fields below (temperature/storage for gateways,
+    PoE/port-count for switches) are ``None`` when not applicable to that
+    device's type - all confirmed against a live controller's actual
+    ``stat/device`` payload for one ``uap``, one ``usw`` and one ``uxg``
+    device, not guessed from documentation.
+    """
 
     mac: str
     name: str
@@ -190,11 +208,75 @@ class DeviceInfo:
     state: int | None
     is_online: bool
     uptime_seconds: int | None
+    cpu_percent: float | None
+    memory_percent: float | None
+    satisfaction_percent: float | None
+    client_count: int | None
+    cpu_temp_celsius: float | None
+    storage_percent: float | None
+    poe_power_watts: float | None
+    active_ports: int | None
+    total_ports: int | None
     radios: list[RadioStat] = field(default_factory=list)
 
 
 # UniFi device "state" field: 1 = connected/online in the common case.
 _ONLINE_STATE = 1
+
+
+def _parse_cpu_temp(device: dict[str, Any]) -> float | None:
+    """Gateways expose a ``temperatures`` list of named sensors; we want
+    the one with ``type: "cpu"`` (also seen: "board" for chassis/PHY
+    sensors, which we deliberately don't surface as a generic "temperature"
+    to avoid ambiguity about which one a plain "Temperature" sensor means).
+    """
+    temps = device.get("temperatures")
+    if not isinstance(temps, list):
+        return None
+    for t in temps:
+        if isinstance(t, dict) and t.get("type") == "cpu":
+            return _num(t.get("value"))
+    return None
+
+
+def _parse_storage_percent(device: dict[str, Any]) -> float | None:
+    """Gateways expose a ``storage`` list of mount points (e.g. a small
+    "/persistent" flash partition used for local backups/logs, separate
+    from any attached USB/NVMe storage on models that support it). We
+    report the first entry - on the single gateway this was tested
+    against there was exactly one ("/persistent").
+    """
+    storage = device.get("storage")
+    if not isinstance(storage, list) or not storage:
+        return None
+    entry = storage[0]
+    if not isinstance(entry, dict):
+        return None
+    size = _num(entry.get("size"))
+    used = _num(entry.get("used"))
+    if not size:
+        return None
+    return round((used or 0) / size * 100, 1)
+
+
+def _parse_switch_ports(device: dict[str, Any]) -> tuple[float | None, int | None, int | None]:
+    """Aggregate a switch's port_table into (poe_power_watts, active_ports,
+    total_ports) - intentionally aggregated rather than one sensor per
+    port (a 48-port switch would otherwise add 48 near-identical entities).
+    """
+    ports = device.get("port_table")
+    if not isinstance(ports, list) or not ports:
+        return None, None, None
+    total = len(ports)
+    active = sum(1 for p in ports if isinstance(p, dict) and p.get("up"))
+    poe_watts: float | None = None
+    for p in ports:
+        if not isinstance(p, dict):
+            continue
+        watts = _num(p.get("poe_power"))
+        if watts is not None:
+            poe_watts = (poe_watts or 0.0) + watts
+    return poe_watts, active, total
 
 
 def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
@@ -214,19 +296,35 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
                         channel_utilization_percent=_num(radio.get("cu_total")),
                         tx_retries_percent=_num(radio.get("tx_retries")),
                         num_clients=_int_or_none(radio.get("num_sta")),
-                        satisfaction_percent=_num(radio.get("satisfaction")),
+                        satisfaction_percent=_satisfaction(radio.get("satisfaction")),
                     )
                 )
         state = _int_or_none(device.get("state"))
+        system_stats = device.get("system-stats")
+        device_type = device.get("type")
+
+        poe_watts = active_ports = total_ports = None
+        if device_type == "usw":
+            poe_watts, active_ports, total_ports = _parse_switch_ports(device)
+
         result.append(
             DeviceInfo(
                 mac=str(device.get("mac", "")),
                 name=str(device.get("name") or device.get("mac") or "unknown"),
                 model=device.get("model"),
-                device_type=device.get("type"),
+                device_type=device_type,
                 state=state,
                 is_online=state == _ONLINE_STATE,
                 uptime_seconds=_int_or_none(device.get("uptime")),
+                cpu_percent=_num(system_stats.get("cpu")) if isinstance(system_stats, dict) else None,
+                memory_percent=_num(system_stats.get("mem")) if isinstance(system_stats, dict) else None,
+                satisfaction_percent=_satisfaction(device.get("satisfaction")),
+                client_count=_int_or_none(device.get("num_sta")),
+                cpu_temp_celsius=_parse_cpu_temp(device) if device_type == "uxg" else None,
+                storage_percent=_parse_storage_percent(device) if device_type == "uxg" else None,
+                poe_power_watts=poe_watts,
+                active_ports=active_ports,
+                total_ports=total_ports,
                 radios=radios,
             )
         )
@@ -308,4 +406,65 @@ def parse_wan_health(health_entries: list[dict[str, Any]]) -> WanHealth:
         latency_ms=_num(wan_monitor.get("latency_average")) if wan_monitor else None,
         rx_rate_mbps=round(rx_rate * 8 / 1_000_000, 2) if rx_rate is not None else None,
         tx_rate_mbps=round(tx_rate * 8 / 1_000_000, 2) if tx_rate is not None else None,
+    )
+
+
+@dataclass(frozen=True)
+class NetworkHealth:
+    """Network-wide counts and the controller's own periodic ISP speed
+    test, from the "wlan"/"lan"/"www" stat/health entries - confirmed
+    against a live UDM-family controller.
+    """
+
+    connected_aps: int | None
+    switch_count: int | None
+    guest_clients: int | None
+    iot_clients: int | None
+    speedtest_download_mbps: float | None
+    speedtest_upload_mbps: float | None
+    speedtest_ping_ms: float | None
+    speedtest_last_run: int | None
+    wan_drops: int | None
+
+
+def _sum_optional(*values: float | None) -> float | None:
+    """Sum values that are present; None only if *none* of them are."""
+    present = [v for v in values if v is not None]
+    return sum(present) if present else None
+
+
+def parse_network_health(health_entries: list[dict[str, Any]]) -> NetworkHealth:
+    """Extract AP/switch/guest/IoT counts and the ISP speed test result.
+
+    The "www" subsystem's ``xput_down``/``xput_up``/``speedtest_ping`` only
+    reflect the controller's *last* speed test (it runs one periodically,
+    or on demand via "ISP Speed Test" in the UniFi app) - they read 0 right
+    after being reset until the next run completes, not a continuous
+    live measurement. ``speedtest_lastrun`` (epoch seconds) tells you how
+    stale the reading is.
+    """
+    wlan = next((e for e in health_entries if e.get("subsystem") == "wlan"), None)
+    lan = next((e for e in health_entries if e.get("subsystem") == "lan"), None)
+    www = next((e for e in health_entries if e.get("subsystem") == "www"), None)
+
+    return NetworkHealth(
+        connected_aps=_int_or_none(wlan.get("num_ap")) if wlan else None,
+        switch_count=_int_or_none(lan.get("num_sw")) if lan else None,
+        guest_clients=_int_or_none(
+            _sum_optional(
+                _num(wlan.get("num_guest")) if wlan else None,
+                _num(lan.get("num_guest")) if lan else None,
+            )
+        ),
+        iot_clients=_int_or_none(
+            _sum_optional(
+                _num(wlan.get("num_iot")) if wlan else None,
+                _num(lan.get("num_iot")) if lan else None,
+            )
+        ),
+        speedtest_download_mbps=_num(www.get("xput_down")) if www else None,
+        speedtest_upload_mbps=_num(www.get("xput_up")) if www else None,
+        speedtest_ping_ms=_num(www.get("speedtest_ping")) if www else None,
+        speedtest_last_run=_int_or_none(www.get("speedtest_lastrun")) if www else None,
+        wan_drops=_int_or_none(www.get("drops")) if www else None,
     )

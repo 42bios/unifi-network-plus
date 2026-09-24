@@ -15,12 +15,14 @@ from .parsing import (
     DeviceInfo,
     HealthSubsystem,
     MonthlyUsage,
+    NetworkHealth,
     TopClient,
     WanHealth,
     WanThroughput,
     parse_devices,
     parse_health,
     parse_monthly_usage,
+    parse_network_health,
     parse_top_clients,
     parse_wan_health,
     parse_wan_throughput,
@@ -35,6 +37,7 @@ class UniFiSnapshot:
 
     wan: WanThroughput
     wan_health: WanHealth
+    network_health: NetworkHealth
     monthly_usage: MonthlyUsage
     top_clients: list[TopClient]
     devices: list[DeviceInfo]
@@ -125,6 +128,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         return UniFiSnapshot(
             wan=wan,
             wan_health=wan_health,
+            network_health=parse_network_health(health),
             monthly_usage=parse_monthly_usage(daily_samples, window_start.timestamp() * 1000),
             top_clients=parse_top_clients(clients, self.top_clients_count),
             devices=parse_devices(devices),

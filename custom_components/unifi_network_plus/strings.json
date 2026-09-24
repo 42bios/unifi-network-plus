@@ -42,12 +42,29 @@
       "wan_latency": { "name": "WAN Latency" },
       "wan_packet_loss": { "name": "WAN Packet Loss" },
       "wan_availability": { "name": "WAN Availability" },
+      "wan_drops": { "name": "WAN Drops" },
       "isp_name": { "name": "ISP Name" },
+      "speedtest_download": { "name": "Speedtest Download" },
+      "speedtest_upload": { "name": "Speedtest Upload" },
+      "speedtest_ping": { "name": "Speedtest Ping" },
+      "speedtest_last_run": { "name": "Speedtest Last Run" },
+      "connected_aps": { "name": "Connected Access Points" },
+      "switch_count": { "name": "Switches" },
+      "guest_clients": { "name": "Guest Clients" },
+      "iot_clients": { "name": "IoT Clients" },
       "monthly_usage": { "name": "Monthly Data Usage" },
       "top_clients": { "name": "Top Clients" },
       "connected_clients": { "name": "Connected Clients" },
-      "radio_channel_utilization": { "name": "{device} {radio} Channel Utilization" },
-      "radio_tx_retries": { "name": "{device} {radio} TX Retries" }
+      "radio_channel_utilization": { "name": "{radio} Channel Utilization" },
+      "radio_tx_retries": { "name": "{radio} TX Retries" },
+      "device_cpu": { "name": "CPU" },
+      "device_memory": { "name": "Memory" },
+      "device_clients": { "name": "Clients" },
+      "device_satisfaction": { "name": "Satisfaction" },
+      "device_cpu_temp": { "name": "CPU Temperature" },
+      "device_storage": { "name": "Storage" },
+      "device_poe_power": { "name": "PoE Power" },
+      "device_active_ports": { "name": "Active Ports" }
     }
   }
 }

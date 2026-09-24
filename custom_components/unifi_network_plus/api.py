@@ -306,10 +306,7 @@ class UniFiClient:
 
     async def get_health(self) -> list[dict[str, Any]]:
         """Return subsystem health entries (``stat/health``)."""
-        result = await self._get("stat/health")
-        wan = [e for e in result if e.get("subsystem") == "wan"]
-        _LOGGER.debug("UniFi stat/health wan subsystem: %s", wan)
-        return result
+        return await self._get("stat/health")
 
     async def get_wan_report_5min(self) -> list[dict[str, Any]]:
         """Return recent 5-minute WAN throughput/latency samples."""

@@ -17,6 +17,7 @@ from parsing import (  # noqa: E402
     parse_devices,
     parse_health,
     parse_monthly_usage,
+    parse_network_health,
     parse_top_clients,
     parse_wan_health,
     parse_wan_throughput,
@@ -208,3 +209,161 @@ def test_parse_wan_health_missing_uptime_stats_does_not_crash() -> None:
     assert result.isp_name == "Some ISP"
     assert result.availability_percent is None
     assert result.latency_ms is None
+
+
+# Trimmed from an actual live UDM-family controller's stat/health response.
+_LIVE_NETWORK_HEALTH_FIXTURE = [
+    {
+        "subsystem": "wlan",
+        "status": "ok",
+        "num_ap": 5,
+        "num_guest": 2,
+        "num_iot": 3,
+    },
+    {
+        "subsystem": "lan",
+        "status": "ok",
+        "num_sw": 4,
+        "num_guest": 0,
+        "num_iot": 1,
+    },
+    {
+        "subsystem": "www",
+        "status": "ok",
+        "drops": 2,
+        "xput_down": 245.3,
+        "xput_up": 41.7,
+        "speedtest_ping": 9,
+        "speedtest_lastrun": 1790150452,
+    },
+]
+
+
+def test_parse_network_health_extracts_all_fields() -> None:
+    result = parse_network_health(_LIVE_NETWORK_HEALTH_FIXTURE)
+    assert result.connected_aps == 5
+    assert result.switch_count == 4
+    assert result.guest_clients == 2  # 2 (wlan) + 0 (lan)
+    assert result.iot_clients == 4  # 3 (wlan) + 1 (lan)
+    assert result.speedtest_download_mbps == 245.3
+    assert result.speedtest_upload_mbps == 41.7
+    assert result.speedtest_ping_ms == 9.0
+    assert result.speedtest_last_run == 1790150452
+    assert result.wan_drops == 2
+
+
+def test_parse_network_health_idle_speedtest_reads_zero_not_none() -> None:
+    # A controller that hasn't run a speed test recently reports 0.0, not a
+    # missing field - distinguishing "never run" from "ran, got 0 Mbps"
+    # isn't possible from this payload, so we surface the 0 as-is rather
+    # than hiding it (speedtest_last_run tells the user how stale it is).
+    result = parse_network_health([{"subsystem": "www", "xput_down": 0.0, "xput_up": 0.0}])
+    assert result.speedtest_download_mbps == 0.0
+    assert result.speedtest_upload_mbps == 0.0
+
+
+def test_parse_network_health_missing_subsystems_returns_none() -> None:
+    result = parse_network_health([])
+    assert result.connected_aps is None
+    assert result.switch_count is None
+    assert result.guest_clients is None
+    assert result.speedtest_download_mbps is None
+
+
+# Trimmed from a live controller's stat/device response for one AP, one
+# switch, and one gateway - only the fields the new per-device sensors read.
+_LIVE_AP_DEVICE_FIXTURE = {
+    "mac": "aa:bb:cc:dd:ee:01",
+    "name": "U6-PRO-LIVINGROOM",
+    "model": "UAP6MP",
+    "type": "uap",
+    "state": 1,
+    "uptime": 9828411,
+    "num_sta": 12,
+    "satisfaction": 98,
+    "system-stats": {"cpu": "4.7", "mem": "66.5", "uptime": "9828411"},
+}
+
+_LIVE_SWITCH_DEVICE_FIXTURE = {
+    "mac": "aa:bb:cc:dd:ee:02",
+    "name": "Kern-Switch",
+    "model": "USW-Pro-48-PoE",
+    "type": "usw",
+    "state": 1,
+    "uptime": 500000,
+    "num_sta": 33,
+    "satisfaction": 92,
+    "system-stats": {"cpu": "2.3", "mem": "80.2"},
+    "port_table": [
+        {"port_idx": 1, "up": True, "poe_power": "12.34"},
+        {"port_idx": 2, "up": True, "poe_power": "0.00"},
+        {"port_idx": 3, "up": False},
+        {"port_idx": 4, "up": True},  # no poe_power key at all (non-PoE port)
+    ],
+}
+
+_LIVE_GATEWAY_DEVICE_FIXTURE = {
+    "mac": "aa:bb:cc:dd:ee:03",
+    "name": "UXG-PRO",
+    "model": "UXG-Pro",
+    "type": "uxg",
+    "state": 1,
+    "uptime": 4301070,
+    "num_sta": 33,
+    "system-stats": {"cpu": "20.6", "mem": "60.3"},
+    "temperatures": [
+        {"name": "CPU", "type": "cpu", "value": 44.75},
+        {"name": "Local", "type": "board", "value": 42.5},
+    ],
+    "storage": [{"mount_point": "/persistent", "size": 2040373248, "used": 15134720}],
+}
+
+
+def test_parse_devices_ap_metrics() -> None:
+    device = parse_devices([_LIVE_AP_DEVICE_FIXTURE])[0]
+    assert device.cpu_percent == 4.7
+    assert device.memory_percent == 66.5
+    assert device.satisfaction_percent == 98.0
+    assert device.client_count == 12
+    # AP-only fixture: gateway/switch-only fields stay None.
+    assert device.cpu_temp_celsius is None
+    assert device.storage_percent is None
+    assert device.poe_power_watts is None
+    assert device.active_ports is None
+
+
+def test_parse_devices_satisfaction_sentinel_minus_one_is_none() -> None:
+    # UniFi uses -1 as "no data yet" (e.g. a radio/device with zero
+    # connected clients) - confirmed live - not a real negative percentage.
+    fixture = {**_LIVE_AP_DEVICE_FIXTURE, "satisfaction": -1}
+    device = parse_devices([fixture])[0]
+    assert device.satisfaction_percent is None
+
+
+def test_parse_devices_switch_aggregates_ports() -> None:
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
+    assert device.satisfaction_percent == 92.0
+    # 12.34 + 0.00 (port 3 excluded: down but has no poe_power anyway; port
+    # 4 excluded: no poe_power key at all, i.e. not a PoE-capable port)
+    assert device.poe_power_watts == 12.34
+    assert device.active_ports == 3  # ports 1, 2, 4 are up
+    assert device.total_ports == 4
+
+
+def test_parse_devices_gateway_temperature_and_storage() -> None:
+    device = parse_devices([_LIVE_GATEWAY_DEVICE_FIXTURE])[0]
+    assert device.cpu_temp_celsius == 44.75  # "cpu"-typed entry, not "board"
+    # 15134720 / 2040373248 * 100 = 0.7...%
+    assert device.storage_percent == 0.7
+    # Gateway fixture has no radio_table_stats/satisfaction -> AP-only
+    # fields stay None/empty, not guessed.
+    assert device.satisfaction_percent is None
+    assert device.radios == []
+
+
+def test_parse_devices_missing_optional_sections_does_not_crash() -> None:
+    device = parse_devices([{"mac": "1", "name": "bare", "type": "uxg", "state": 1}])[0]
+    assert device.cpu_percent is None
+    assert device.cpu_temp_celsius is None
+    assert device.storage_percent is None
+    assert device.poe_power_watts is None

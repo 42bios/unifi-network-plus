@@ -3,8 +3,13 @@
 Home Assistant custom integration that talks **directly** to a local
 Ubiquiti UniFi Network Controller / UniFi OS console and exposes the extra
 statistics the built-in core `unifi` integration does not: WAN throughput,
-latency, ISP/availability, top clients by traffic, and per-AP-radio channel
-utilization / TX retries.
+latency, ISP/availability, the controller's own periodic ISP speed test,
+top clients by traffic, network-wide AP/switch/guest/IoT counts, and - per
+physical device (AP/switch/gateway), each grouped as its own Home Assistant
+device - CPU/memory/client-count/satisfaction, plus gateway temperature/
+storage and switch PoE draw/active-port-count. New devices (a newly adopted
+AP or switch) are picked up automatically on the next poll, no restart
+needed.
 
 **Verified against a live UDM-family (UniFi OS) controller** - see "What
 was verified" below for exactly what that covered and what's still
@@ -105,18 +110,51 @@ samples the way some other UniFi API clients' docs describe it.
 
 ## Sensors
 
+All entries below are confirmed against a live UDM-family controller
+unless noted. Per-device and per-radio sensors are created dynamically -
+the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
+
+### Controller-wide
+
 | Sensor | Source | Notes |
 |---|---|---|
-| WAN Download / WAN Upload | `stat/report/5minutes.gw`, latest bucket | Mbps, `SensorDeviceClass.DATA_RATE`; confirmed live |
-| WAN Latency | `stat/health` → `uptime_stats.WAN.latency_average` | ms; confirmed live (the report endpoint carries no latency field on the tested controller) |
+| WAN Download / WAN Upload | `stat/report/5minutes.gw`, latest bucket | Mbps |
+| WAN Latency | `stat/health` → `uptime_stats.WAN.latency_average` | ms (the report endpoint carries no latency field on the tested controller) |
 | WAN Packet Loss | `stat/report/5minutes.gw` | %; **not confirmed** - no matching field found in the live response tested against, see below |
-| WAN Availability | `stat/health` → `uptime_stats.WAN.availability` | %; the controller's own rolling ping/DNS-monitor success rate - confirmed live |
-| ISP Name | `stat/health` → `isp_name` | confirmed live |
-| Monthly Data Usage | `stat/report/daily.gw`, summed for the current calendar month | GB, with download/upload as attributes; confirmed live |
-| Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute; confirmed live |
-| Connected Clients | `stat/sta` | count; confirmed live |
-| `<AP> <radio> Channel Utilization` | `stat/device` → `radio_table_stats[].cu_total` | one sensor per AP per radio (2.4/5/6GHz), created dynamically, grouped under that AP's own device; confirmed live |
-| `<AP> <radio> TX Retries` | `stat/device` → `radio_table_stats[].tx_retries` | one sensor per AP per radio; confirmed live |
+| WAN Availability | `stat/health` → `uptime_stats.WAN.availability` | %; the controller's own rolling ping/DNS-monitor success rate |
+| WAN Drops | `stat/health` → `www.drops` | count |
+| ISP Name | `stat/health` → `www.isp_name` | |
+| Speedtest Download / Upload / Ping | `stat/health` → `www.xput_down` / `xput_up` / `speedtest_ping` | the controller's own periodic/manual "ISP Speed Test" result - **not a continuous live measurement**, reads 0 between runs |
+| Speedtest Last Run | `stat/health` → `www.speedtest_lastrun` | timestamp; use this to judge how stale the speedtest numbers above are |
+| Connected Access Points | `stat/health` → `wlan.num_ap` | |
+| Switches | `stat/health` → `lan.num_sw` | |
+| Guest Clients / IoT Clients | `stat/health` → `wlan`+`lan`.`num_guest`/`num_iot`, summed | |
+| Monthly Data Usage | `stat/report/daily.gw`, summed for the current calendar month | GB, with download/upload as attributes |
+| Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute |
+| Connected Clients | `stat/sta` | count |
+
+### Per physical device (its own Home Assistant device entry)
+
+| Sensor | Source | Applies to |
+|---|---|---|
+| CPU / Memory | `stat/device` → `system-stats.{cpu,mem}` | all types |
+| Clients | `stat/device` → `num_sta` | all types |
+| Satisfaction | `stat/device` → `satisfaction` | APs, switches (UniFi's own network-experience score; `-1` = "no data yet", surfaced as unavailable rather than a fake -1%) |
+| CPU Temperature | `stat/device` → `temperatures[type=cpu]` | gateway |
+| Storage | `stat/device` → `storage[0]` | gateway |
+| PoE Power | `stat/device` → `port_table[].poe_power`, summed | switches |
+| Active Ports | `stat/device` → `port_table[].up`, counted | switches |
+
+### Per AP radio (2.4/5/6GHz, grouped under that AP's device)
+
+| Sensor | Source |
+|---|---|
+| Channel Utilization | `stat/device` → `radio_table_stats[].cu_total` |
+| TX Retries | `stat/device` → `radio_table_stats[].tx_retries` |
+
+Deliberately **not** one sensor per switch port (a 48-port switch would add
+48 near-identical entities for little benefit) - PoE Power and Active Ports
+above are the aggregated view instead.
 
 WiFi connectivity success rate (association/authentication/DHCP/DNS %) was
 investigated but **not implemented**: not present anywhere in the
@@ -124,13 +162,35 @@ investigated but **not implemented**: not present anywhere in the
 `parsing.py` is structured so it can be added the same way as the other
 fields if you find it on your controller version.
 
+## Polling frequency - is this "live"?
+
+No - this is REST polling on a timer (`DataUpdateCoordinator`, default 60s,
+configurable 15-3600s in the integration's options), not a push/websocket
+feed. The UniFi controller does expose a real-time WebSocket event stream
+(`wss://.../proxy/network/wss/s/<site>/events`, used internally by
+`aiounifi`/the core `unifi` integration for instant client connect/
+disconnect events) - this integration doesn't use it, so don't expect
+sub-second updates. For the kind of data this integration adds (WAN
+throughput trends, device health, radio stats), a 60s poll is a reasonable
+default; lower it if you want more granularity at the cost of more requests
+against the controller.
+
+## Auto-discovery of new devices
+
+Yes - `sensor.py` registers a coordinator listener, not just a one-time
+entity list at startup. Every poll checks for device MACs / AP radios not
+seen before and adds entities for them on the fly. Adopt a new AP or
+switch and its sensors appear automatically within one poll interval - no
+Home Assistant restart or re-adding the integration required.
+
 ## What was verified vs. what still needs checking on your controller
 
 This was tested end-to-end (real login, all endpoints, all sensors except
-WAN Packet Loss populated with live data) against one UniFi OS console
-(UDM-family, controller version 5.1.26, single site). That covers the auth
-flow, CSRF handling, and every endpoint's *shape* well. What it does not
-cover:
+WAN Packet Loss populated with live data, including every per-device metric
+across one `uap`, one `usw` and the `uxg` gateway) against one UniFi OS
+console (UDM-family, controller version 5.1.26, single site, 5 APs, 4
+switches). That covers the auth flow, CSRF handling, and every endpoint's
+*shape* well. What it does not cover:
 
 - Classic (non-UniFi-OS) controllers / Cloud Key Gen1 - the classic
   `/api/login` + `/api/s/<site>/...` code path is implemented and unit
@@ -206,6 +266,9 @@ Config flow fields:
   - `parsing.py` - pure functions turning raw JSON into typed data (unit tested)
   - `coordinator.py` - `DataUpdateCoordinator` polling glue
   - `config_flow.py`, `sensor.py`, `const.py`, `__init__.py`
+  - `brand/` - the integration's icon/logo (reused from the official UniFi
+    brand assets Home Assistant already ships for the core `unifi`
+    integration, since this is the same product family - not a new logo)
 - `tests/` - `pytest` unit tests (parsing + mocked-HTTP API client), no live controller required
 - `hacs.json`, `LICENSE`, `.github/workflows/` - HACS/CI plumbing
 
