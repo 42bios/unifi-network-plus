@@ -386,6 +386,22 @@ _LIVE_GATEWAY_DEVICE_FIXTURE = {
         {"name": "Local", "type": "board", "value": 42.5},
     ],
     "storage": [{"mount_point": "/persistent", "size": 2040373248, "used": 15134720}],
+    # Trimmed from a real UXG-PRO's port_table - confirmed live that
+    # gateways carry a port_table too (WAN/WAN2/LAN/SFP+), not just switches.
+    "port_table": [
+        {"port_idx": 1, "up": False, "media": "GE", "name": "Port 1", "network_name": "wan2"},
+        {"port_idx": 2, "up": False, "media": "GE", "name": "Port 2", "network_name": "lan"},
+        {
+            "port_idx": 3,
+            "up": True,
+            "media": "SFP+",
+            "speed": 1000,
+            "name": "SFP+ 1",
+            "network_name": "wan",
+            "rx_bytes-r": 14007,
+            "tx_bytes-r": 900518,
+        },
+    ],
 }
 
 
@@ -524,6 +540,24 @@ def test_parse_devices_firmware_missing_fields_does_not_crash() -> None:
     device = parse_devices([{"mac": "1", "name": "bare", "type": "uap", "state": 1}])[0]
     assert device.firmware_version is None
     assert device.firmware_latest_version is None
+
+
+def test_parse_devices_gateway_has_ports_too() -> None:
+    # Regression: per-port entities were originally gated to device_type
+    # == "usw" only, which incorrectly hid a gateway's WAN/WAN2/LAN/SFP+
+    # ports - not just switches carry a port_table.
+    device = parse_devices([_LIVE_GATEWAY_DEVICE_FIXTURE])[0]
+    assert len(device.ports) == 3
+    wan_port = device.ports[2]
+    assert wan_port.network_name == "wan"
+    assert wan_port.media == "SFP+"
+    assert wan_port.is_up is True
+    assert wan_port.rx_mbps == 0.112
+    wan2_port = device.ports[0]
+    assert wan2_port.network_name == "wan2"
+    assert wan2_port.is_up is False
+    # Gateway ports aren't PoE sources - no poe_mode key at all.
+    assert wan_port.poe_mode is None
 
 
 def test_parse_devices_gateway_temperature_and_storage() -> None:

@@ -7,8 +7,8 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**461 entities** as of the latest release (vs. the core `unifi`
-integration's 281 in the same environment - mostly the per-switch-port
+**477 entities** as of the latest release (vs. the core `unifi`
+integration's 281 in the same environment - mostly the per-port
 entities below, which are disabled by default and don't clutter a fresh
 install): WAN throughput, latency, ISP/availability, the controller's own
 periodic ISP speed test, top clients by traffic (including VLAN/network,
@@ -16,8 +16,9 @@ signal, CCQ, SSID and channel), network-wide AP/switch/guest/IoT counts;
 per physical device (AP/switch/gateway, each its own Home Assistant
 device) CPU/memory/client-count/satisfaction/anomalies/overheating,
 gateway temperature/storage, switch PoE draw/active-port-count and one
-Firmware update entity; per-switch-port link speed (with connection type:
-copper/fibre/DAC), PoE power and live download/upload throughput
+Firmware update entity; per-port link speed (with connection type:
+copper/fibre/DAC and, when present, which network it carries) PoE power
+and live download/upload throughput on **both switches and gateways**
 (disabled by default - enable individual ports from Settings -> Entities
 if you want them); a real-time-connection diagnostic sensor backed by the
 controller's WebSocket event stream, used to trigger faster refreshes on
@@ -184,11 +185,15 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | Channel Utilization | `stat/device` → `radio_table_stats[].cu_total` |
 | TX Retries | `stat/device` → `radio_table_stats[].tx_retries` |
 
-### Per switch port (grouped under that switch's device, **disabled by default**)
+### Per port (grouped under that device's own entry, **disabled by default**)
+
+Applies to **both switches and gateways** - confirmed live that a UXG-PRO's
+WAN/WAN2/LAN/SFP+ ports carry the same `port_table` shape as a switch's
+(gateway ports just aren't PoE sources, so PoE Power there reads `None`).
 
 | Sensor | Source |
 |---|---|
-| Link Speed | `stat/device` → `port_table[].speed` (only reported when the port is up); carries the port's media type (`GE` copper Gigabit, `SFP+` fibre/DAC uplink, etc. - confirmed both present on a live switch) as an attribute |
+| Link Speed | `stat/device` → `port_table[].speed` (only reported when the port is up); carries the port's media type (`GE` copper Gigabit, `SFP+` fibre/DAC uplink, etc.) and, when present, which network it carries (`wan`/`wan2`/`lan`, confirmed on a gateway) as attributes |
 | PoE Power | `stat/device` → `port_table[].poe_power` |
 | Download / Upload | `stat/device` → `port_table[].rx_bytes-r` / `tx_bytes-r`, live instantaneous rate (same "-r" convention as the WAN sensors) |
 
@@ -372,7 +377,7 @@ pytest -q
 
 The intent is for this integration to eventually be a complete
 replacement for the core `unifi` integration, not just a companion to it -
-it's already past core's 281-entity count for this environment (461, most
+it's already past core's 281-entity count for this environment (477, most
 of that from the disabled-by-default per-port entities), though entity
 *count* alone isn't the same as feature parity - client presence tracking
 and write/control operations below are the real remaining gap.

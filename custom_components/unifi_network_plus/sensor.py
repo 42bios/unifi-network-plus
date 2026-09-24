@@ -790,7 +790,14 @@ class PortLinkSpeedSensor(PortBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         port = self._find_port()
-        return {"media": port.media} if port and port.media else {}
+        if not port:
+            return {}
+        attrs: dict[str, Any] = {}
+        if port.media:
+            attrs["media"] = port.media
+        if port.network_name:
+            attrs["network"] = port.network_name
+        return attrs
 
     @property
     def available(self) -> bool:

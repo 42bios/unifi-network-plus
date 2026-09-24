@@ -235,6 +235,10 @@ class PortStat:
     # "auto"/"off"/"24v"/"passthrough" - only present on PoE-capable ports
     # (confirmed absent on non-PoE ports, matching poe_power_watts).
     poe_mode: str | None
+    # The network this port carries, e.g. "wan", "wan2", "lan" - confirmed
+    # on a UXG-PRO gateway's ports (a switch's ports didn't carry it in
+    # the fixtures tested, hence nullable).
+    network_name: str | None
 
 
 @dataclass(frozen=True)
@@ -364,6 +368,7 @@ def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
                 tx_mbps=round(tx_rate * 8 / 1_000_000, 3) if tx_rate is not None else None,
                 media=p.get("media"),
                 poe_mode=p.get("poe_mode"),
+                network_name=p.get("network_name"),
             )
         )
     return result
@@ -413,10 +418,14 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
         device_type = device.get("type")
 
         poe_watts = active_ports = total_ports = None
-        ports: list[PortStat] = []
         if device_type == "usw":
             poe_watts, active_ports, total_ports = _parse_switch_ports(device)
-            ports = _parse_ports(device)
+        # Per-port entities apply to any device with a port_table, not just
+        # switches - confirmed live: a UXG-PRO gateway's WAN/WAN2/LAN/SFP+
+        # ports carry the same port_table shape (media, rx/tx-r, etc.) as a
+        # switch's. Only the aggregated PoE Power/Active Ports metrics
+        # above stay switch-only (a gateway's ports aren't PoE sources).
+        ports = _parse_ports(device) if isinstance(device.get("port_table"), list) else []
 
         firmware_version, firmware_latest_version = _parse_firmware(device)
 
