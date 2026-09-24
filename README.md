@@ -1,15 +1,22 @@
 # UniFi Network+
 
 Home Assistant custom integration that talks **directly** to a local
-Ubiquiti UniFi Network Controller / UniFi OS console and exposes the extra
-statistics the built-in core `unifi` integration does not: WAN throughput,
-latency, ISP/availability, the controller's own periodic ISP speed test,
-top clients by traffic, network-wide AP/switch/guest/IoT counts, and - per
-physical device (AP/switch/gateway), each grouped as its own Home Assistant
-device - CPU/memory/client-count/satisfaction, plus gateway temperature/
-storage and switch PoE draw/active-port-count. New devices (a newly adopted
-AP or switch) are picked up automatically on the next poll, no restart
-needed.
+Ubiquiti UniFi Network Controller / UniFi OS console. Started as a
+companion to the core `unifi` integration (extra stats it doesn't expose);
+the goal going forward is closing the remaining gap to become a complete
+replacement, not just a "+" add-on - see [Roadmap toward feature
+parity](#roadmap-toward-feature-parity).
+
+**237 entities** as of the latest release (vs. the core `unifi`
+integration's 281 in the same environment): WAN throughput, latency, ISP/
+availability, the controller's own periodic ISP speed test, top clients by
+traffic, network-wide AP/switch/guest/IoT counts; per physical device
+(AP/switch/gateway, each its own Home Assistant device) CPU/memory/client-
+count/satisfaction, gateway temperature/storage, switch PoE draw/active-
+port-count and one Firmware update entity; and per-switch-port link speed
++ PoE power (disabled by default - enable individual ports from Settings ->
+Entities if you want them). New devices (a newly adopted AP or switch) are
+picked up automatically on the next poll, no restart needed.
 
 **Verified against a live UDM-family (UniFi OS) controller** - see "What
 was verified" below for exactly what that covered and what's still
@@ -144,6 +151,7 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | Storage | `stat/device` → `storage[0]` | gateway |
 | PoE Power | `stat/device` → `port_table[].poe_power`, summed | switches |
 | Active Ports | `stat/device` → `port_table[].up`, counted | switches |
+| Firmware (`update` entity) | `stat/device` → `version`/`upgradable`/`upgrade_to_firmware` | all types; **read-only** - see below |
 
 ### Per AP radio (2.4/5/6GHz, grouped under that AP's device)
 
@@ -152,9 +160,26 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | Channel Utilization | `stat/device` → `radio_table_stats[].cu_total` |
 | TX Retries | `stat/device` → `radio_table_stats[].tx_retries` |
 
-Deliberately **not** one sensor per switch port (a 48-port switch would add
-48 near-identical entities for little benefit) - PoE Power and Active Ports
-above are the aggregated view instead.
+### Per switch port (grouped under that switch's device, **disabled by default**)
+
+| Sensor | Source |
+|---|---|
+| Link Speed | `stat/device` → `port_table[].speed` (only reported when the port is up) |
+| PoE Power | `stat/device` → `port_table[].poe_power` |
+
+A 48-port switch would otherwise add 96 near-identical entities most users
+never look at port-by-port - the aggregated PoE Power/Active Ports sensors
+on the switch device itself cover the common case. Enable individual ports
+from Settings -> Devices & Services -> Entities if you want to graph one
+specific port.
+
+The Firmware update entity is **read-only**: it reports whether an update
+is available (`installed_version`/`latest_version`), but does not
+implement installing one. Triggering a firmware flash on network
+infrastructure remotely, from Home Assistant, without a very deliberate
+separate opt-in felt like more risk than this integration should take on
+by default - see [Roadmap](#roadmap-toward-feature-parity) if you want
+that changed.
 
 WiFi connectivity success rate (association/authentication/DHCP/DNS %) was
 investigated but **not implemented**: not present anywhere in the
@@ -280,18 +305,44 @@ pip install -r requirements-test.txt
 pytest -q
 ```
 
-## Roadmap
+## Roadmap toward feature parity
 
-1. Validate against a classic (non-UniFi-OS) controller and a second UniFi
+The intent is for this integration to eventually be a complete
+replacement for the core `unifi` integration, not just a companion to it -
+right now it's at 237 entities against core's 281 in the same environment.
+Phases, roughly in order (each phase should land with its own tests before
+starting the next - this file's "bugs found" section exists because
+skipping that step once already cost a debugging session):
+
+1. **Done**: WAN throughput/latency/availability/ISP/speedtest, network-
+   wide AP/switch/guest/IoT counts, per-device CPU/memory/satisfaction/
+   temperature/storage/PoE, per-radio channel/TX-retry stats, per-port
+   link-speed/PoE (disabled by default), per-device firmware `update`
+   entities, dynamic device grouping, auto-discovery of new devices.
+2. **Client presence tracking** (`device_tracker` platform) - the single
+   biggest remaining gap (~72 entities in the core integration for this
+   environment). Deliberately *not* done as part of the sensor/update push
+   above: core `unifi`'s client-tracking has years of refined edge-case
+   handling (MAC randomization, `consider_home` timeout tuning, guest vs.
+   authorized clients, wired vs. wireless reconnect behavior) that's easy
+   to get subtly wrong in a first pass. Needs its own focused session
+   rather than being bolted onto an unrelated change.
+3. **Per-port switch entities** for the things core `unifi` exposes as
+   controllable (PoE port on/off) - would need a `switch` platform and,
+   unlike everything so far, starts writing to the network instead of only
+   reading from it. Needs explicit user sign-off on the risk/blast-radius
+   trade-off before starting, not just a design decision made here.
+4. Validate against a classic (non-UniFi-OS) controller and a second UniFi
    OS firmware version/model to firm up the "what still needs checking"
-   list above.
-2. Find and wire up a real WAN Packet Loss field, if one exists on some
+   list above - the further this grows, the more that matters.
+5. Find and wire up a real WAN Packet Loss field, if one exists on some
    controller version (`parsing.py::parse_wan_throughput`'s candidate list
-   is ready for it).
-3. Consider surfacing the per-monitor detail already present in
-   `uptime_stats.WAN.monitors` (e.g. individual ping.ui.com/1.1.1.1/
-   8.8.8.8 latency, and the WAN2 failover subsystem seen on dual-WAN
-   setups) as attributes on the WAN Availability sensor.
+   is ready for it); consider surfacing per-monitor WAN detail
+   (`uptime_stats.WAN.monitors`, the WAN2 failover subsystem) as
+   attributes on the WAN Availability sensor.
+6. Revisit whether the Firmware `update` entity should support
+   `async_install` once the rest of this list is solid - see the caveat
+   in the Sensors section above for why it doesn't yet.
 
 ## License
 

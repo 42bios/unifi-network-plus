@@ -282,6 +282,9 @@ _LIVE_AP_DEVICE_FIXTURE = {
     "num_sta": 12,
     "satisfaction": 98,
     "system-stats": {"cpu": "4.7", "mem": "66.5", "uptime": "9828411"},
+    "version": "6.8.2.15592",
+    "displayable_version": "6.8.2",
+    "upgradable": False,
 }
 
 _LIVE_SWITCH_DEVICE_FIXTURE = {
@@ -295,10 +298,10 @@ _LIVE_SWITCH_DEVICE_FIXTURE = {
     "satisfaction": 92,
     "system-stats": {"cpu": "2.3", "mem": "80.2"},
     "port_table": [
-        {"port_idx": 1, "up": True, "poe_power": "12.34"},
-        {"port_idx": 2, "up": True, "poe_power": "0.00"},
-        {"port_idx": 3, "up": False},
-        {"port_idx": 4, "up": True},  # no poe_power key at all (non-PoE port)
+        {"port_idx": 1, "up": True, "poe_power": "12.34", "speed": 1000, "name": "Port 1"},
+        {"port_idx": 2, "up": True, "poe_power": "0.00", "speed": 100, "name": "Port 2"},
+        {"port_idx": 3, "up": False, "speed": 0, "name": "Port 3"},
+        {"port_idx": 4, "up": True, "name": "Port 4"},  # no poe_power key at all (non-PoE port)
     ],
 }
 
@@ -348,6 +351,55 @@ def test_parse_devices_switch_aggregates_ports() -> None:
     assert device.poe_power_watts == 12.34
     assert device.active_ports == 3  # ports 1, 2, 4 are up
     assert device.total_ports == 4
+
+
+def test_parse_devices_switch_per_port_detail() -> None:
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
+    assert len(device.ports) == 4
+    port1 = device.ports[0]
+    assert port1.port_idx == 1
+    assert port1.name == "Port 1"
+    assert port1.is_up is True
+    assert port1.speed_mbps == 1000
+    assert port1.poe_power_watts == 12.34
+    port4 = device.ports[3]
+    assert port4.poe_power_watts is None  # no poe_power key on this port
+
+
+def test_parse_devices_non_switch_has_no_ports() -> None:
+    device = parse_devices([_LIVE_AP_DEVICE_FIXTURE])[0]
+    assert device.ports == []
+
+
+def test_parse_devices_firmware_up_to_date() -> None:
+    device = parse_devices([_LIVE_AP_DEVICE_FIXTURE])[0]
+    assert device.firmware_version == "6.8.2"  # prefers displayable_version
+    assert device.firmware_latest_version == "6.8.2"  # not upgradable -> same
+
+
+def test_parse_devices_firmware_update_available() -> None:
+    fixture = {
+        **_LIVE_AP_DEVICE_FIXTURE,
+        "upgradable": True,
+        "upgrade_to_firmware": "6.9.0.99999",
+    }
+    device = parse_devices([fixture])[0]
+    assert device.firmware_version == "6.8.2"
+    assert device.firmware_latest_version == "6.9.0.99999"
+
+
+def test_parse_devices_firmware_upgradable_without_target_falls_back() -> None:
+    # Defensive: upgradable=True but no upgrade_to_firmware value shouldn't
+    # report "update to None".
+    fixture = {**_LIVE_AP_DEVICE_FIXTURE, "upgradable": True, "upgrade_to_firmware": None}
+    device = parse_devices([fixture])[0]
+    assert device.firmware_latest_version == device.firmware_version
+
+
+def test_parse_devices_firmware_missing_fields_does_not_crash() -> None:
+    device = parse_devices([{"mac": "1", "name": "bare", "type": "uap", "state": 1}])[0]
+    assert device.firmware_version is None
+    assert device.firmware_latest_version is None
 
 
 def test_parse_devices_gateway_temperature_and_storage() -> None:

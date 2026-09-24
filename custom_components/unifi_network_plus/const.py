@@ -16,7 +16,7 @@ DEFAULT_TOP_CLIENTS = 5
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_TOP_CLIENTS_COUNT = "top_clients_count"
 
-PLATFORMS: list[str] = ["sensor"]
+PLATFORMS: list[str] = ["sensor", "update"]
 
 MANUFACTURER = "Ubiquiti"
 

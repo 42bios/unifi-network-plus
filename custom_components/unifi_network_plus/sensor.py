@@ -70,6 +70,7 @@ async def async_setup_entry(
 
     known_device_macs: set[str] = set()
     known_radio_keys: set[tuple[str, str]] = set()
+    known_port_keys: set[tuple[str, int]] = set()
 
     def _discover_new_devices() -> None:
         if not coordinator.data:
@@ -89,6 +90,12 @@ async def async_setup_entry(
                         RadioChannelUtilizationSensor(entry, coordinator, device.mac, radio.radio)
                     )
                     new_entities.append(RadioTxRetriesSensor(entry, coordinator, device.mac, radio.radio))
+            for port in device.ports:
+                key = (device.mac, port.port_idx)
+                if key not in known_port_keys:
+                    known_port_keys.add(key)
+                    new_entities.append(PortLinkSpeedSensor(entry, coordinator, device.mac, port.port_idx))
+                    new_entities.append(PortPoePowerSensor(entry, coordinator, device.mac, port.port_idx))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -677,6 +684,103 @@ class DeviceMetricSensor(DeviceBaseSensor):
     def native_value(self) -> Any:
         device = self._find_device()
         return getattr(device, self._spec.key) if device else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
+class PortBaseSensor(DeviceBaseSensor):
+    """Base for a per-switch-port sensor.
+
+    Disabled by default (``_attr_entity_registry_enabled_default = False``):
+    a 48-port switch would otherwise add dozens of near-identical entities
+    most users never look at individually - the aggregated PoE Power/Active
+    Ports sensors on the switch device itself (see DEVICE_METRICS) cover the
+    common case. Enable specific ports from Settings -> Entities if you want
+    them (e.g. to graph one particular port's PoE draw over time).
+    """
+
+    _attr_entity_registry_enabled_default = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac)
+        self._port_idx = port_idx
+
+    def _find_port(self):
+        device = self._find_device()
+        if not device:
+            return None
+        for port in device.ports:
+            if port.port_idx == self._port_idx:
+                return port
+        return None
+
+
+class PortLinkSpeedSensor(PortBaseSensor):
+    """Negotiated link speed for one switch port."""
+
+    _attr_translation_key = "port_link_speed"
+    _attr_native_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
+    _attr_device_class = SensorDeviceClass.DATA_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac, port_idx)
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_port{port_idx}_link_speed"
+        port = self._find_port()
+        self._attr_translation_placeholders = {"port": port.name if port else f"Port {port_idx}"}
+
+    @property
+    def native_value(self) -> float | None:
+        port = self._find_port()
+        if not port or not port.is_up:
+            return None
+        return port.speed_mbps
+
+    @property
+    def available(self) -> bool:
+        port = self._find_port()
+        return super().available and port is not None
+
+
+class PortPoePowerSensor(PortBaseSensor):
+    """PoE power draw for one switch port."""
+
+    _attr_translation_key = "port_poe_power"
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac, port_idx)
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_port{port_idx}_poe_power"
+        port = self._find_port()
+        self._attr_translation_placeholders = {"port": port.name if port else f"Port {port_idx}"}
+
+    @property
+    def native_value(self) -> float | None:
+        port = self._find_port()
+        return port.poe_power_watts if port else None
 
     @property
     def available(self) -> bool:

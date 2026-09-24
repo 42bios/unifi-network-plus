@@ -37,34 +37,101 @@
   },
   "entity": {
     "sensor": {
-      "wan_download": { "name": "WAN Download" },
-      "wan_upload": { "name": "WAN Upload" },
-      "wan_latency": { "name": "WAN Latenz" },
-      "wan_packet_loss": { "name": "WAN Paketverlust" },
-      "wan_availability": { "name": "WAN Verfügbarkeit" },
-      "wan_drops": { "name": "WAN-Abbrüche" },
-      "isp_name": { "name": "Internetanbieter" },
-      "speedtest_download": { "name": "Speedtest Download" },
-      "speedtest_upload": { "name": "Speedtest Upload" },
-      "speedtest_ping": { "name": "Speedtest Ping" },
-      "speedtest_last_run": { "name": "Speedtest zuletzt ausgeführt" },
-      "connected_aps": { "name": "Verbundene Access Points" },
-      "switch_count": { "name": "Switches" },
-      "guest_clients": { "name": "Gast-Clients" },
-      "iot_clients": { "name": "IoT-Clients" },
-      "monthly_usage": { "name": "Monatliches Datenvolumen" },
-      "top_clients": { "name": "Top-Clients" },
-      "connected_clients": { "name": "Verbundene Clients" },
-      "radio_channel_utilization": { "name": "{radio} Kanalauslastung" },
-      "radio_tx_retries": { "name": "{radio} TX-Retries" },
-      "device_cpu": { "name": "CPU" },
-      "device_memory": { "name": "Arbeitsspeicher" },
-      "device_clients": { "name": "Clients" },
-      "device_satisfaction": { "name": "Zufriedenheit" },
-      "device_cpu_temp": { "name": "CPU-Temperatur" },
-      "device_storage": { "name": "Speicher" },
-      "device_poe_power": { "name": "PoE-Leistung" },
-      "device_active_ports": { "name": "Aktive Ports" }
+      "wan_download": {
+        "name": "WAN Download"
+      },
+      "wan_upload": {
+        "name": "WAN Upload"
+      },
+      "wan_latency": {
+        "name": "WAN Latenz"
+      },
+      "wan_packet_loss": {
+        "name": "WAN Paketverlust"
+      },
+      "wan_availability": {
+        "name": "WAN Verfügbarkeit"
+      },
+      "wan_drops": {
+        "name": "WAN-Abbrüche"
+      },
+      "isp_name": {
+        "name": "Internetanbieter"
+      },
+      "speedtest_download": {
+        "name": "Speedtest Download"
+      },
+      "speedtest_upload": {
+        "name": "Speedtest Upload"
+      },
+      "speedtest_ping": {
+        "name": "Speedtest Ping"
+      },
+      "speedtest_last_run": {
+        "name": "Speedtest zuletzt ausgeführt"
+      },
+      "connected_aps": {
+        "name": "Verbundene Access Points"
+      },
+      "switch_count": {
+        "name": "Switches"
+      },
+      "guest_clients": {
+        "name": "Gast-Clients"
+      },
+      "iot_clients": {
+        "name": "IoT-Clients"
+      },
+      "monthly_usage": {
+        "name": "Monatliches Datenvolumen"
+      },
+      "top_clients": {
+        "name": "Top-Clients"
+      },
+      "connected_clients": {
+        "name": "Verbundene Clients"
+      },
+      "radio_channel_utilization": {
+        "name": "{radio} Kanalauslastung"
+      },
+      "radio_tx_retries": {
+        "name": "{radio} TX-Retries"
+      },
+      "device_cpu": {
+        "name": "CPU"
+      },
+      "device_memory": {
+        "name": "Arbeitsspeicher"
+      },
+      "device_clients": {
+        "name": "Clients"
+      },
+      "device_satisfaction": {
+        "name": "Zufriedenheit"
+      },
+      "device_cpu_temp": {
+        "name": "CPU-Temperatur"
+      },
+      "device_storage": {
+        "name": "Speicher"
+      },
+      "device_poe_power": {
+        "name": "PoE-Leistung"
+      },
+      "device_active_ports": {
+        "name": "Aktive Ports"
+      },
+      "port_link_speed": {
+        "name": "{port} Verbindungsgeschwindigkeit"
+      },
+      "port_poe_power": {
+        "name": "{port} PoE-Leistung"
+      }
+    },
+    "update": {
+      "firmware": {
+        "name": "Firmware"
+      }
     }
   }
 }

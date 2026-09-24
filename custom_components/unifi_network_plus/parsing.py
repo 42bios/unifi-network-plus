@@ -191,6 +191,25 @@ class RadioStat:
 
 
 @dataclass(frozen=True)
+class PortStat:
+    """One switch port's status, from stat/device's port_table.
+
+    Deliberately more granular than the aggregated ``DeviceInfo.poe_power_watts``/
+    ``active_ports`` - callers building per-port entities are expected to
+    register them disabled by default (a 48-port switch's worth of per-port
+    entities is a lot of clutter for something most users won't look at
+    port-by-port day to day), matching how the core ``unifi`` integration's
+    own per-port sensors behave.
+    """
+
+    port_idx: int
+    name: str
+    is_up: bool
+    speed_mbps: int | None
+    poe_power_watts: float | None
+
+
+@dataclass(frozen=True)
 class DeviceInfo:
     """Parsed device (AP/switch/gateway) entry from stat/device.
 
@@ -217,7 +236,10 @@ class DeviceInfo:
     poe_power_watts: float | None
     active_ports: int | None
     total_ports: int | None
+    firmware_version: str | None
+    firmware_latest_version: str | None
     radios: list[RadioStat] = field(default_factory=list)
+    ports: list[PortStat] = field(default_factory=list)
 
 
 # UniFi device "state" field: 1 = connected/online in the common case.
@@ -279,6 +301,49 @@ def _parse_switch_ports(device: dict[str, Any]) -> tuple[float | None, int | Non
     return poe_watts, active, total
 
 
+def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
+    """Per-port detail for a switch's port_table (see PortStat)."""
+    ports = device.get("port_table")
+    if not isinstance(ports, list):
+        return []
+    result: list[PortStat] = []
+    for p in ports:
+        if not isinstance(p, dict):
+            continue
+        idx = _int_or_none(p.get("port_idx"))
+        if idx is None:
+            continue
+        result.append(
+            PortStat(
+                port_idx=idx,
+                name=str(p.get("name") or f"Port {idx}"),
+                is_up=bool(p.get("up")),
+                speed_mbps=_int_or_none(p.get("speed")),
+                poe_power_watts=_num(p.get("poe_power")),
+            )
+        )
+    return result
+
+
+def _parse_firmware(device: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return (installed_version, latest_version).
+
+    Confirmed against live data: ``upgradable`` (bool) and
+    ``upgrade_to_firmware`` (the target version string, only populated
+    when an update is actually available) - none of the 10 devices tested
+    against currently had a pending update, so ``upgrade_to_firmware`` was
+    only observed as ``None``; falling back to the installed version when
+    it's missing even though ``upgradable`` is set keeps this from ever
+    reporting a nonsensical "update to None".
+    """
+    installed = device.get("displayable_version") or device.get("version")
+    installed = str(installed) if installed else None
+    latest = installed
+    if device.get("upgradable") and device.get("upgrade_to_firmware"):
+        latest = str(device["upgrade_to_firmware"])
+    return installed, latest
+
+
 def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
     """Parse stat/device entries, including per-radio channel/retry stats."""
     result: list[DeviceInfo] = []
@@ -304,8 +369,12 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
         device_type = device.get("type")
 
         poe_watts = active_ports = total_ports = None
+        ports: list[PortStat] = []
         if device_type == "usw":
             poe_watts, active_ports, total_ports = _parse_switch_ports(device)
+            ports = _parse_ports(device)
+
+        firmware_version, firmware_latest_version = _parse_firmware(device)
 
         result.append(
             DeviceInfo(
@@ -325,7 +394,10 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
                 poe_power_watts=poe_watts,
                 active_ports=active_ports,
                 total_ports=total_ports,
+                firmware_version=firmware_version,
+                firmware_latest_version=firmware_latest_version,
                 radios=radios,
+                ports=ports,
             )
         )
     return result
