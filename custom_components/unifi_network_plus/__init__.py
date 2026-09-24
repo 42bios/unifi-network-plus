@@ -31,7 +31,6 @@ from .websocket import UniFiEventListener
 _LOGGER = logging.getLogger(__name__)
 
 RUNTIME_COORDINATOR = "coordinator"
-RUNTIME_SESSION = "session"
 RUNTIME_EVENT_LISTENER = "event_listener"
 
 
@@ -50,7 +49,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # A dedicated session (rather than the shared HA clientsession) so a
     # bad/self-signed cert setting for this controller never affects other
     # integrations, and so its cookie jar (holding the UniFi OS TOKEN
-    # cookie) is isolated per config entry.
+    # cookie) is isolated per config entry. Created via
+    # async_create_clientsession, which registers it with Home Assistant's
+    # own lifecycle - HA closes it automatically on shutdown/reload, so
+    # async_unload_entry below must NOT also call session.close() itself
+    # (that used to be harmless, but current HA versions detect and warn
+    # on integrations double-managing a session they got this way).
     # UniFi controllers are almost always reached by bare IP on the local
     # network. aiohttp's default cookie jar refuses to store cookies for
     # numeric IP hosts (a conservative RFC 6265 interpretation) unless
@@ -114,7 +118,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][entry.entry_id] = {
         RUNTIME_COORDINATOR: coordinator,
-        RUNTIME_SESSION: session,
         RUNTIME_EVENT_LISTENER: event_listener,
     }
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -130,6 +133,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if runtime:
             listener: UniFiEventListener = runtime[RUNTIME_EVENT_LISTENER]
             await listener.stop()
-            session: aiohttp.ClientSession = runtime[RUNTIME_SESSION]
-            await session.close()
     return unload_ok
