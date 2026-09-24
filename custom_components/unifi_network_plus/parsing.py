@@ -160,6 +160,9 @@ class TopClient:
     # Present on both wired and wireless clients - confirmed live.
     network_name: str | None
     vlan: int | None
+    # Seconds since this client last associated/connected - confirmed
+    # present on both wired and wireless clients.
+    uptime_seconds: int | None
 
 
 def parse_top_clients(clients: list[dict[str, Any]], count: int) -> list[TopClient]:
@@ -189,6 +192,7 @@ def parse_top_clients(clients: list[dict[str, Any]], count: int) -> list[TopClie
                 channel=int(ch) if not is_wired and (ch := _num(client.get("channel"))) is not None else None,
                 network_name=client.get("network"),
                 vlan=_int_or_none(client.get("vlan")),
+                uptime_seconds=_int_or_none(client.get("uptime")),
             )
         )
     parsed.sort(key=lambda c: c.total_bytes, reverse=True)
@@ -239,6 +243,15 @@ class PortStat:
     # on a UXG-PRO gateway's ports (a switch's ports didn't carry it in
     # the fixtures tested, hence nullable).
     network_name: str | None
+    # What's plugged into this port right now, from port_table[].last_connection
+    # - confirmed live. mac/ip come straight from that payload; name is
+    # resolved separately by the coordinator (which has both the client and
+    # device lists to match against) via dataclasses.replace(), not here -
+    # a single port dict alone doesn't carry a friendly name for whatever's
+    # on the other end of the cable.
+    connected_mac: str | None
+    connected_ip: str | None
+    connected_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -357,6 +370,9 @@ def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
             continue
         rx_rate = _num(p.get("rx_bytes-r"))
         tx_rate = _num(p.get("tx_bytes-r"))
+        last_connection = p.get("last_connection")
+        if not isinstance(last_connection, dict) or not last_connection.get("connected"):
+            last_connection = None
         result.append(
             PortStat(
                 port_idx=idx,
@@ -369,6 +385,8 @@ def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
                 media=p.get("media"),
                 poe_mode=p.get("poe_mode"),
                 network_name=p.get("network_name"),
+                connected_mac=last_connection.get("mac") if last_connection else None,
+                connected_ip=last_connection.get("ip") if last_connection else None,
             )
         )
     return result

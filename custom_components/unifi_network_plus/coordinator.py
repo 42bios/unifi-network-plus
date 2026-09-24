@@ -131,7 +131,45 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
             network_health=parse_network_health(health),
             monthly_usage=parse_monthly_usage(daily_samples, window_start.timestamp() * 1000),
             top_clients=parse_top_clients(clients, self.top_clients_count),
-            devices=parse_devices(devices),
+            devices=_resolve_port_connection_names(parse_devices(devices), clients, devices),
             health=parse_health(health),
             client_count=len(clients),
         )
+
+
+def _resolve_port_connection_names(
+    devices: list[DeviceInfo],
+    raw_clients: list[dict],
+    raw_devices: list[dict],
+) -> list[DeviceInfo]:
+    """Fill in PortStat.connected_name for each port's connected_mac.
+
+    A single port_table entry only carries the MAC/IP of whatever's plugged
+    into it (see parsing.py's PortStat) - resolving that to a friendly name
+    needs both the client list and the device list (an uplink port often
+    connects to another UniFi device, not a regular client), which only the
+    coordinator has both of at once.
+    """
+    mac_to_name: dict[str, str] = {}
+    for client in raw_clients:
+        mac = client.get("mac")
+        if mac:
+            mac_to_name[mac] = str(client.get("name") or client.get("hostname") or mac)
+    for device in raw_devices:
+        mac = device.get("mac")
+        if mac:
+            mac_to_name[mac] = str(device.get("name") or mac)
+
+    result: list[DeviceInfo] = []
+    for device in devices:
+        if not device.ports:
+            result.append(device)
+            continue
+        new_ports = [
+            replace(port, connected_name=mac_to_name.get(port.connected_mac))
+            if port.connected_mac
+            else port
+            for port in device.ports
+        ]
+        result.append(replace(device, ports=new_ports))
+    return result

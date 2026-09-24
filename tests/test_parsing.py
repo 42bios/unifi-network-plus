@@ -132,11 +132,13 @@ def test_parse_top_clients_wireless_extras_from_live_fixture() -> None:
         "channel": 36,
         "network": "CLIENTS",
         "vlan": 30,
+        "uptime": 1765781,
     }
     top = parse_top_clients([client], count=1)
     assert top[0].ccq == 333
     assert top[0].essid == "MyHomeWiFi"
     assert top[0].channel == 36
+    assert top[0].uptime_seconds == 1765781
     assert top[0].network_name == "CLIENTS"
     assert top[0].vlan == 30
 
@@ -364,6 +366,13 @@ _LIVE_SWITCH_DEVICE_FIXTURE = {
             "media": "GE",
             "rx_bytes-r": 779.3106246576455,
             "tx_bytes-r": 119.49443103203426,
+            "last_connection": {
+                "connected": True,
+                "mac": "aa:bb:cc:dd:ee:12",
+                "ip": "192.168.1.20",
+                "last_seen": 1775084131,
+                "connected_at": 1775084131,
+            },
         },
         {"port_idx": 2, "up": True, "poe_power": "0.00", "speed": 100, "name": "Port 2", "media": "GE"},
         {"port_idx": 3, "up": False, "speed": 0, "name": "Port 3", "media": "GE"},
@@ -454,6 +463,41 @@ def test_parse_devices_switch_per_port_detail() -> None:
     assert port4.rx_mbps is None  # no rx_bytes-r key on this port
     port5 = device.ports[4]
     assert port5.media == "SFP+"  # fibre/DAC uplink, not copper
+
+
+def test_parse_devices_port_connected_mac_ip_from_last_connection() -> None:
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
+    port1 = device.ports[0]
+    assert port1.connected_mac == "aa:bb:cc:dd:ee:12"
+    assert port1.connected_ip == "192.168.1.20"
+    # Resolved separately by the coordinator (needs client+device lists),
+    # not by parse_devices() alone.
+    assert port1.connected_name is None
+
+
+def test_parse_devices_port_not_connected_has_no_mac() -> None:
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
+    port3 = device.ports[2]  # up=False, no last_connection key at all
+    assert port3.connected_mac is None
+    assert port3.connected_ip is None
+
+
+def test_parse_devices_port_last_connection_not_connected_is_ignored() -> None:
+    # A last_connection object can be present but stale (connected: False)
+    # - e.g. a previously-plugged-in device that's since been unplugged.
+    fixture = {
+        **_LIVE_SWITCH_DEVICE_FIXTURE,
+        "port_table": [
+            {
+                "port_idx": 1,
+                "up": False,
+                "name": "Port 1",
+                "last_connection": {"connected": False, "mac": "aa:bb:cc:dd:ee:ff"},
+            },
+        ],
+    }
+    device = parse_devices([fixture])[0]
+    assert device.ports[0].connected_mac is None
 
 
 def test_parse_devices_anomalies_sentinel_minus_one_is_none() -> None:

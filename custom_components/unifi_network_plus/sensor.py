@@ -499,6 +499,7 @@ class TopClientsSensor(UniFiBaseSensor):
                     "channel": client.channel,
                     "network": client.network_name,
                     "vlan": client.vlan,
+                    "uptime_seconds": client.uptime_seconds,
                 }
                 for client in self.coordinator.data.top_clients
             ]
@@ -797,6 +798,11 @@ class PortLinkSpeedSensor(PortBaseSensor):
             attrs["media"] = port.media
         if port.network_name:
             attrs["network"] = port.network_name
+        if port.connected_name:
+            attrs["connected_device"] = port.connected_name
+            attrs["connected_mac"] = port.connected_mac
+            if port.connected_ip:
+                attrs["connected_ip"] = port.connected_ip
         return attrs
 
     @property
