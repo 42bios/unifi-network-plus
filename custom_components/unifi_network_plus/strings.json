@@ -94,6 +94,9 @@
       "connected_clients": {
         "name": "Connected Clients"
       },
+      "account_permission": {
+        "name": "Account Permission"
+      },
       "radio_channel_utilization": {
         "name": "{radio} Channel Utilization"
       },

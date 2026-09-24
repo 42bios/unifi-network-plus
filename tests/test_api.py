@@ -413,3 +413,74 @@ async def test_set_port_poe_mode_adds_override_when_missing(api_module) -> None:
         calls = _calls_for(mocked, "PUT", "/rest/device/device-id-123")
         body = calls[0].kwargs["json"]
         assert body["port_overrides"] == [{"port_idx": 2, "poe_mode": "auto", "portconf_id": "conf-2"}]
+
+
+@pytest.mark.asyncio
+async def test_get_site_role_returns_matching_site_role(api_module) -> None:
+    """Request shape cross-checked against aiounifi's SiteListRequest -
+    a global (non-site-scoped) GET, unlike every other call in this file.
+    """
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass", site="default")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/self/sites",
+                status=200,
+                payload={"data": [{"name": "default", "role": "readonly"}, {"name": "other", "role": "admin"}]},
+            )
+            role = await client.get_site_role()
+
+        assert role == "readonly"
+        assert client.site_role == "readonly"
+
+
+@pytest.mark.asyncio
+async def test_get_site_role_no_matching_site_returns_none(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass", site="default")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/self/sites",
+                status=200,
+                payload={"data": [{"name": "other-site", "role": "admin"}]},
+            )
+            role = await client.get_site_role()
+
+        assert role is None
+
+
+@pytest.mark.asyncio
+async def test_get_site_role_request_failure_returns_none_not_raises(api_module) -> None:
+    """Best-effort: a failure here must not break normal integration setup."""
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass", site="default")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/self/sites",
+                status=403,
+                payload={"error": "forbidden"},
+            )
+            role = await client.get_site_role()
+
+        assert role is None

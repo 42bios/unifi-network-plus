@@ -94,6 +94,9 @@
       "connected_clients": {
         "name": "Verbundene Clients"
       },
+      "account_permission": {
+        "name": "Konto-Berechtigung"
+      },
       "radio_channel_utilization": {
         "name": "{radio} Kanalauslastung"
       },

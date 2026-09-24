@@ -97,8 +97,18 @@ class _DeviceControlBase(CoordinatorEntity[UniFiNetworkPlusCoordinator], SwitchE
         }
 
     @property
+    def _has_control_permission(self) -> bool:
+        """False only when the account's site role is *known* and isn't
+        "admin" - if the role couldn't be determined at all (None), fail
+        open and let the write attempt itself surface any real error,
+        rather than hiding the entity over an inconclusive check.
+        """
+        role = self.coordinator.client.site_role
+        return role is None or role == "admin"
+
+    @property
     def available(self) -> bool:
-        return super().available and self._find_device() is not None
+        return super().available and self._find_device() is not None and self._has_control_permission
 
 
 class LocateSwitch(_DeviceControlBase):

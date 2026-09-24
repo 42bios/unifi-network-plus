@@ -66,6 +66,7 @@ async def async_setup_entry(
             MonthlyUsageSensor(entry, coordinator),
             TopClientsSensor(entry, coordinator),
             ConnectedClientsSensor(entry, coordinator),
+            AccountPermissionSensor(entry, coordinator),
         ]
     )
 
@@ -520,6 +521,32 @@ class ConnectedClientsSensor(UniFiBaseSensor):
     @property
     def native_value(self) -> int | None:
         return self.coordinator.data.client_count if self.coordinator.data else None
+
+
+class AccountPermissionSensor(UniFiBaseSensor):
+    """The configured account's site role ("admin"/"readonly"/...),
+    determined once at startup (see ``UniFiClient.get_site_role``).
+
+    Purely informational: tells you at a glance whether the Locate/PoE
+    control switch entities can actually work with this account, without
+    having to try one and read a log line.
+    """
+
+    _attr_translation_key = "account_permission"
+    _attr_icon = "mdi:shield-account-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator) -> None:
+        super().__init__(entry, coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_account_permission"
+
+    @property
+    def native_value(self) -> str | None:
+        return self.coordinator.client.site_role
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.client.site_role is not None
 
 
 class DeviceBaseSensor(UniFiBaseSensor):

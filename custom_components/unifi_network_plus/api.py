@@ -118,6 +118,7 @@ class UniFiClient:
         self._is_unifi_os: bool | None = None
         self._csrf_token: str | None = None
         self._logged_in = False
+        self.site_role: str | None = None
 
     @property
     def base_url(self) -> str:
@@ -260,6 +261,13 @@ class UniFiClient:
             return f"/proxy/network/api/s/{self.site}/{suffix}"
         return f"/api/s/{self.site}/{suffix}"
 
+    def _self_path(self, suffix: str) -> str:
+        """Build a global (non-site-scoped) API path, e.g. self/sites."""
+        suffix = suffix.lstrip("/")
+        if self._is_unifi_os:
+            return f"/proxy/network/api/{suffix}"
+        return f"/api/{suffix}"
+
     async def _request(
         self,
         method: str,
@@ -267,6 +275,7 @@ class UniFiClient:
         *,
         json_body: dict[str, Any] | None = None,
         retry_on_auth_failure: bool = True,
+        site_scoped: bool = True,
     ) -> Any:
         await self._ensure_logged_in()
 
@@ -278,7 +287,8 @@ class UniFiClient:
             # unconditionally is harmless when it's not required.
             headers["X-CSRF-Token"] = self._csrf_token
 
-        url = f"{self.base_url}{self._api_path(suffix)}"
+        path = self._api_path(suffix) if site_scoped else self._self_path(suffix)
+        url = f"{self.base_url}{path}"
         stored_cookies = self._session.cookie_jar.filter_cookies(self.base_url)
         _LOGGER.debug(
             "UniFi request: %s %s csrf_present=%s cookie_jar_has_token=%s headers_sent=%s",
@@ -311,7 +321,11 @@ class UniFiClient:
                     self._logged_in = False
                     await self.login()
                     return await self._request(
-                        method, suffix, json_body=json_body, retry_on_auth_failure=False
+                        method,
+                        suffix,
+                        json_body=json_body,
+                        retry_on_auth_failure=False,
+                        site_scoped=site_scoped,
                     )
                 if resp.status == 401:
                     raise UniFiAuthError(f"Unauthorized after re-login on {suffix}")
@@ -402,6 +416,35 @@ class UniFiClient:
     async def get_health(self) -> list[dict[str, Any]]:
         """Return subsystem health entries (``stat/health``)."""
         return await self._get("stat/health")
+
+    async def get_site_role(self) -> str | None:
+        """Return this account's role for the configured site ("admin",
+        "readonly", ...), or ``None`` if it can't be determined.
+
+        ``GET self/sites`` is a global endpoint (not scoped under
+        ``/s/<site>/...`` like everything else in this file) that lists
+        every site this account can see, each with its own ``role`` -
+        cross-checked against aiounifi's ``SiteListRequest``/``Site.role``,
+        which Home Assistant's core ``unifi`` integration uses the exact
+        same way (``hub.is_admin = site.role == "admin"``) to gate
+        admin-only features. Used here so write-capable entities (Locate,
+        PoE control) can reflect a "View Only" account's actual
+        permissions up front instead of only discovering it via a failed
+        write. Best-effort: returns None on any error rather than raising,
+        since this is a nice-to-have check, not a required one.
+        """
+        try:
+            sites = await self._request("GET", "self/sites", site_scoped=False)
+        except UniFiApiError:
+            return None
+        if not isinstance(sites, list):
+            return None
+        for entry in sites:
+            if isinstance(entry, dict) and entry.get("name") == self.site:
+                role = entry.get("role")
+                self.site_role = str(role) if role else None
+                return self.site_role
+        return None
 
     async def get_wan_report_5min(self) -> list[dict[str, Any]]:
         """Return recent 5-minute WAN throughput/latency samples."""

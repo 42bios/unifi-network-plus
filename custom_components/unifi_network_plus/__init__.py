@@ -79,6 +79,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except UniFiConnectionError as err:
         raise ConfigEntryNotReady(str(err)) from err
 
+    # Best-effort: lets the Locate/PoE-control switch entities reflect this
+    # account's actual site permissions ("View Only" vs "Full Management")
+    # up front, rather than only finding out via a failed write. Never
+    # blocks setup - client.get_site_role() already swallows its own
+    # errors and returns None when it can't be determined.
+    await client.get_site_role()
+
     scan_interval = int(
         options.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
     )
