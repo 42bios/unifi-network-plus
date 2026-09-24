@@ -129,6 +129,42 @@ class UniFiClient:
         """Whether the controller was detected as a UniFi OS console."""
         return bool(self._is_unifi_os)
 
+    @property
+    def session(self) -> aiohttp.ClientSession:
+        """The underlying aiohttp session (for the WebSocket event listener,
+        which needs to reuse the same authenticated cookie jar)."""
+        return self._session
+
+    @property
+    def verify_ssl(self) -> bool:
+        return self._verify_ssl
+
+    @property
+    def events_url(self) -> str:
+        """WebSocket URL for the controller's real-time event stream.
+
+        Not yet verified against a live controller (unlike the REST paths
+        elsewhere in this file) - paths follow the same UniFi-OS-vs-classic
+        split as ``_api_path``, cross-checked against ``aiounifi``'s
+        equivalent, but see README for the "needs live confirmation" note
+        until a session has actually been observed connecting.
+        """
+        ws_base = self.base_url.replace("https://", "wss://", 1)
+        if self._is_unifi_os:
+            return f"{ws_base}/proxy/network/wss/s/{self.site}/events"
+        return f"{ws_base}/wss/s/{self.site}/events?clients=v2"
+
+    def auth_headers(self) -> dict[str, str]:
+        """Headers to send on the WebSocket upgrade request."""
+        return {"X-CSRF-Token": self._csrf_token} if self._csrf_token else {}
+
+    async def ensure_logged_in(self) -> None:
+        """Public wrapper so callers outside this module (the WebSocket
+        listener) can make sure a session/CSRF token exists before
+        connecting, without reaching into the private ``_ensure_logged_in``.
+        """
+        await self._ensure_logged_in()
+
     # ------------------------------------------------------------------
     # Auth
     # ------------------------------------------------------------------

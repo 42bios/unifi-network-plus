@@ -7,16 +7,19 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**237 entities** as of the latest release (vs. the core `unifi`
+**238 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment): WAN throughput, latency, ISP/
 availability, the controller's own periodic ISP speed test, top clients by
 traffic, network-wide AP/switch/guest/IoT counts; per physical device
 (AP/switch/gateway, each its own Home Assistant device) CPU/memory/client-
 count/satisfaction, gateway temperature/storage, switch PoE draw/active-
-port-count and one Firmware update entity; and per-switch-port link speed
+port-count and one Firmware update entity; per-switch-port link speed
 + PoE power (disabled by default - enable individual ports from Settings ->
-Entities if you want them). New devices (a newly adopted AP or switch) are
-picked up automatically on the next poll, no restart needed.
+Entities if you want them); and a real-time-connection diagnostic sensor
+backed by the controller's WebSocket event stream, used to trigger faster
+refreshes on top of the normal poll interval (see "Polling frequency"
+below). New devices (a newly adopted AP or switch) are picked up
+automatically on the next poll, no restart needed.
 
 **Verified against a live UDM-family (UniFi OS) controller** - see "What
 was verified" below for exactly what that covered and what's still
@@ -77,12 +80,14 @@ mean fighting that model as much as using it. A small, dependency-free
 integration's surface area easy to audit and to keep in sync with what
 each sensor actually reads.
 
-## Three real bugs found (and fixed) against a live controller
+## Real bugs found (and fixed) against a live controller
 
 This integration was originally built with no access to a real UniFi
-controller. Once one became available, three bugs surfaced immediately -
+controller. Once one became available, several bugs surfaced immediately -
 recorded here because they're the kind of thing that's easy to reintroduce
-and each one is covered by a regression test:
+and each one is covered by a regression test (except #4, a Home Assistant
+threading rule rather than something `pytest` without a real HA instance
+can catch):
 
 1. **aiohttp silently drops cookies for bare-IP hosts.** UniFi controllers
    are almost always reached by LAN IP (`192.168.x.x`), not a hostname.
@@ -108,8 +113,18 @@ and each one is covered by a regression test:
    "wan-tx_bytes", "wan-latency_avg"]` plus a `start`/`end` window sized to
    the report granularity. See
    `tests/test_api.py::test_report_request_includes_attrs_and_time_range`.
+4. **`async_track_time_interval` callbacks default to running in the
+   executor thread pool, not the event loop.** The `Realtime Connection`
+   diagnostic `binary_sensor` polls the WebSocket listener's `connected`
+   flag every 10s and calls `async_write_ha_state()` from that callback.
+   Home Assistant can't tell a plain function is loop-safe, so it played it
+   safe and ran it off-thread - which then crashed on the loop-only
+   `async_write_ha_state()` call every 10 seconds. Fixed by decorating the
+   callback with `@homeassistant.core.callback`, which tells Home Assistant
+   it's safe to run directly on the event loop. Confirmed clean against
+   live HA logs (`binary_sensor.py`'s `_refresh`).
 
-A fourth thing turned out to be a wrong assumption rather than a bug: report
+A fifth thing turned out to be a wrong assumption rather than a bug: report
 samples' `wan-rx_bytes` / `wan-tx_bytes` are **per-bucket totals** (bytes
 transferred during that one 5-minute/daily window), not a running lifetime
 counter - so Mbps is `bytes * 8 / bucket_seconds`, not a delta between two
@@ -173,6 +188,12 @@ on the switch device itself cover the common case. Enable individual ports
 from Settings -> Devices & Services -> Entities if you want to graph one
 specific port.
 
+### Diagnostic
+
+| Entity | Source |
+|---|---|
+| Realtime Connection (`binary_sensor`) | Whether the WebSocket event stream (see [Polling frequency](#polling-frequency---is-this-live)) is currently connected. Purely informational - the integration works identically either way, just faster when this is `on`. |
+
 The Firmware update entity is **read-only**: it reports whether an update
 is available (`installed_version`/`latest_version`), but does not
 implement installing one. Triggering a firmware flash on network
@@ -189,16 +210,31 @@ fields if you find it on your controller version.
 
 ## Polling frequency - is this "live"?
 
-No - this is REST polling on a timer (`DataUpdateCoordinator`, default 60s,
-configurable 15-3600s in the integration's options), not a push/websocket
-feed. The UniFi controller does expose a real-time WebSocket event stream
-(`wss://.../proxy/network/wss/s/<site>/events`, used internally by
-`aiounifi`/the core `unifi` integration for instant client connect/
-disconnect events) - this integration doesn't use it, so don't expect
-sub-second updates. For the kind of data this integration adds (WAN
-throughput trends, device health, radio stats), a 60s poll is a reasonable
-default; lower it if you want more granularity at the cost of more requests
-against the controller.
+Mostly, yes. The integration keeps a background WebSocket connection to the
+controller's real-time event feed (`wss://.../proxy/network/wss/s/<site>/events`,
+the same endpoint the UniFi app itself uses) alongside its normal REST
+polling (`DataUpdateCoordinator`, default 60s, configurable 15-3600s in the
+integration's options). It deliberately does **not** try to parse or merge
+the WebSocket payloads into the data model directly - UniFi's event schema
+is only partially documented and reverse-engineering it correctly is a much
+larger, more failure-prone undertaking than the REST endpoints already were
+(see "Bugs found" below). Instead, any event frame (client connect/
+disconnect, device state change, speed test, etc.) is treated purely as a
+"something changed, refresh now" trigger, debounced by ~1.5s so a burst of
+events collapses into a single REST refresh. In practice this means most
+state changes show up within a couple of seconds instead of waiting for the
+next poll interval.
+
+This is strictly additive and safe to lose: the coordinator's own polling
+timer is never disabled, so if the WebSocket is unavailable (older/classic
+controllers, network hiccups, controller reboot) the integration transparently
+falls back to plain polling with automatic reconnect (exponential backoff,
+2-60s, with jitter so multiple HA restarts don't hammer the controller's
+login rate limit at once). A diagnostic `binary_sensor` (*Realtime Connection* /
+`binary_sensor.<host>_<site>_realtime_connected`, enabled by default)
+reports whether the WebSocket is currently connected, so you can tell
+at a glance whether you're getting event-triggered refreshes or have
+fallen back to plain polling.
 
 ## Auto-discovery of new devices
 
@@ -309,7 +345,7 @@ pytest -q
 
 The intent is for this integration to eventually be a complete
 replacement for the core `unifi` integration, not just a companion to it -
-right now it's at 237 entities against core's 281 in the same environment.
+right now it's at 238 entities against core's 281 in the same environment.
 Phases, roughly in order (each phase should land with its own tests before
 starting the next - this file's "bugs found" section exists because
 skipping that step once already cost a debugging session):
@@ -318,7 +354,8 @@ skipping that step once already cost a debugging session):
    wide AP/switch/guest/IoT counts, per-device CPU/memory/satisfaction/
    temperature/storage/PoE, per-radio channel/TX-retry stats, per-port
    link-speed/PoE (disabled by default), per-device firmware `update`
-   entities, dynamic device grouping, auto-discovery of new devices.
+   entities, dynamic device grouping, auto-discovery of new devices,
+   WebSocket-triggered real-time refresh with polling fallback.
 2. **Client presence tracking** (`device_tracker` platform) - the single
    biggest remaining gap (~72 entities in the core integration for this
    environment). Deliberately *not* done as part of the sensor/update push

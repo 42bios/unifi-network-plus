@@ -132,6 +132,11 @@
       "firmware": {
         "name": "Firmware"
       }
+    },
+    "binary_sensor": {
+      "realtime_connected": {
+        "name": "Realtime Connection"
+      }
     }
   }
 }

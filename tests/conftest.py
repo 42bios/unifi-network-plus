@@ -44,3 +44,11 @@ def api_module():
     """Return the isolated api module (also loads const as a dependency)."""
     _load_isolated("const")
     return _load_isolated("api")
+
+
+@pytest.fixture()
+def websocket_module():
+    """Return the isolated websocket module (also loads its dependencies)."""
+    _load_isolated("const")
+    _load_isolated("api")
+    return _load_isolated("websocket")

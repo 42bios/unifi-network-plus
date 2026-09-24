@@ -26,11 +26,13 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import UniFiNetworkPlusCoordinator
+from .websocket import UniFiEventListener
 
 _LOGGER = logging.getLogger(__name__)
 
 RUNTIME_COORDINATOR = "coordinator"
 RUNTIME_SESSION = "session"
+RUNTIME_EVENT_LISTENER = "event_listener"
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -94,9 +96,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await coordinator.async_config_entry_first_refresh()
 
+    # Optional real-time layer: incoming WebSocket events just trigger an
+    # early REST refresh via the coordinator (see websocket.py for why it
+    # doesn't try to parse/merge the event payloads itself). Best-effort -
+    # if the controller/firmware doesn't support this endpoint or the
+    # connection can't be established, the integration keeps working on
+    # its normal polling schedule; this is purely additive.
+    event_listener = UniFiEventListener(client, coordinator.async_request_refresh)
+    event_listener.start()
+
     hass.data[DOMAIN][entry.entry_id] = {
         RUNTIME_COORDINATOR: coordinator,
         RUNTIME_SESSION: session,
+        RUNTIME_EVENT_LISTENER: event_listener,
     }
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -109,6 +121,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         runtime = hass.data[DOMAIN].pop(entry.entry_id, None)
         if runtime:
+            listener: UniFiEventListener = runtime[RUNTIME_EVENT_LISTENER]
+            await listener.stop()
             session: aiohttp.ClientSession = runtime[RUNTIME_SESSION]
             await session.close()
     return unload_ok
