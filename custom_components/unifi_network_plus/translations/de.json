@@ -124,11 +124,20 @@
       "device_active_ports": {
         "name": "Aktive Ports"
       },
+      "device_anomalies": {
+        "name": "Anomalien"
+      },
       "port_link_speed": {
         "name": "{port} Verbindungsgeschwindigkeit"
       },
       "port_poe_power": {
         "name": "{port} PoE-Leistung"
+      },
+      "port_download": {
+        "name": "{port} Download"
+      },
+      "port_upload": {
+        "name": "{port} Upload"
       }
     },
     "update": {
@@ -139,6 +148,9 @@
     "binary_sensor": {
       "realtime_connected": {
         "name": "Echtzeit-Verbindung"
+      },
+      "overheating": {
+        "name": "Überhitzung"
       }
     }
   }

@@ -97,6 +97,8 @@ async def async_setup_entry(
                     known_port_keys.add(key)
                     new_entities.append(PortLinkSpeedSensor(entry, coordinator, device.mac, port.port_idx))
                     new_entities.append(PortPoePowerSensor(entry, coordinator, device.mac, port.port_idx))
+                    new_entities.append(PortDownloadSensor(entry, coordinator, device.mac, port.port_idx))
+                    new_entities.append(PortUploadSensor(entry, coordinator, device.mac, port.port_idx))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -495,6 +497,8 @@ class TopClientsSensor(UniFiBaseSensor):
                     "ccq": client.ccq,
                     "essid": client.essid,
                     "channel": client.channel,
+                    "network": client.network_name,
+                    "vlan": client.vlan,
                 }
                 for client in self.coordinator.data.top_clients
             ]
@@ -679,6 +683,7 @@ DEVICE_METRICS: list[DeviceMetricSpec] = [
         SensorDeviceClass.POWER, None, ("usw",),
     ),
     DeviceMetricSpec("active_ports", "device_active_ports", None, None, "mdi:ethernet", ("usw",)),
+    DeviceMetricSpec("anomalies", "device_anomalies", None, None, "mdi:alert-circle-outline", None),
 ]
 
 
@@ -783,9 +788,74 @@ class PortLinkSpeedSensor(PortBaseSensor):
         return port.speed_mbps
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        port = self._find_port()
+        return {"media": port.media} if port and port.media else {}
+
+    @property
     def available(self) -> bool:
         port = self._find_port()
         return super().available and port is not None
+
+
+class PortDownloadSensor(PortBaseSensor):
+    """Live instantaneous download (switch-to-client) rate for one port."""
+
+    _attr_translation_key = "port_download"
+    _attr_native_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
+    _attr_device_class = SensorDeviceClass.DATA_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac, port_idx)
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_port{port_idx}_download"
+        port = self._find_port()
+        self._attr_translation_placeholders = {"port": port.name if port else f"Port {port_idx}"}
+
+    @property
+    def native_value(self) -> float | None:
+        port = self._find_port()
+        return port.rx_mbps if port else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
+class PortUploadSensor(PortBaseSensor):
+    """Live instantaneous upload (client-to-switch) rate for one port."""
+
+    _attr_translation_key = "port_upload"
+    _attr_native_unit_of_measurement = UnitOfDataRate.MEGABITS_PER_SECOND
+    _attr_device_class = SensorDeviceClass.DATA_RATE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac, port_idx)
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_port{port_idx}_upload"
+        port = self._find_port()
+        self._attr_translation_placeholders = {"port": port.name if port else f"Port {port_idx}"}
+
+    @property
+    def native_value(self) -> float | None:
+        port = self._find_port()
+        return port.tx_mbps if port else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
 
 
 class PortPoePowerSensor(PortBaseSensor):

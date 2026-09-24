@@ -157,6 +157,9 @@ class TopClient:
     ccq: int | None
     essid: str | None
     channel: int | None
+    # Present on both wired and wireless clients - confirmed live.
+    network_name: str | None
+    vlan: int | None
 
 
 def parse_top_clients(clients: list[dict[str, Any]], count: int) -> list[TopClient]:
@@ -184,6 +187,8 @@ def parse_top_clients(clients: list[dict[str, Any]], count: int) -> list[TopClie
                 ccq=int(ccq) if not is_wired and (ccq := _num(client.get("ccq"))) is not None else None,
                 essid=client.get("essid") if not is_wired else None,
                 channel=int(ch) if not is_wired and (ch := _num(client.get("channel"))) is not None else None,
+                network_name=client.get("network"),
+                vlan=_int_or_none(client.get("vlan")),
             )
         )
     parsed.sort(key=lambda c: c.total_bytes, reverse=True)
@@ -219,6 +224,14 @@ class PortStat:
     is_up: bool
     speed_mbps: int | None
     poe_power_watts: float | None
+    # Live instantaneous rate (not a report bucket average) - same "-r"
+    # suffixed field pattern already used for WAN rx/tx, confirmed present
+    # per-port too.
+    rx_mbps: float | None
+    tx_mbps: float | None
+    # "GE" (copper Gigabit Ethernet), "SFP+" (fibre/DAC uplink), etc. -
+    # confirmed both values present on a live switch's port_table.
+    media: str | None
 
 
 @dataclass(frozen=True)
@@ -250,6 +263,14 @@ class DeviceInfo:
     total_ports: int | None
     firmware_version: str | None
     firmware_latest_version: str | None
+    # -1 is UniFi's "no anomaly data yet" sentinel (same convention as
+    # client/satisfaction -1 elsewhere in this API) - kept as None to match.
+    anomalies: int | None
+    # None when the controller doesn't report this for the device (seen
+    # null on an AP in the field, not just absent) rather than always a
+    # bool - kept nullable so the entity can go unavailable instead of
+    # guessing "not overheating".
+    overheating: bool | None
     radios: list[RadioStat] = field(default_factory=list)
     ports: list[PortStat] = field(default_factory=list)
 
@@ -325,6 +346,8 @@ def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
         idx = _int_or_none(p.get("port_idx"))
         if idx is None:
             continue
+        rx_rate = _num(p.get("rx_bytes-r"))
+        tx_rate = _num(p.get("tx_bytes-r"))
         result.append(
             PortStat(
                 port_idx=idx,
@@ -332,6 +355,9 @@ def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
                 is_up=bool(p.get("up")),
                 speed_mbps=_int_or_none(p.get("speed")),
                 poe_power_watts=_num(p.get("poe_power")),
+                rx_mbps=round(rx_rate * 8 / 1_000_000, 3) if rx_rate is not None else None,
+                tx_mbps=round(tx_rate * 8 / 1_000_000, 3) if tx_rate is not None else None,
+                media=p.get("media"),
             )
         )
     return result
@@ -388,6 +414,11 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
 
         firmware_version, firmware_latest_version = _parse_firmware(device)
 
+        anomalies = _int_or_none(device.get("anomalies"))
+        if anomalies is not None and anomalies < 0:
+            anomalies = None  # -1 sentinel: no anomaly data yet
+        overheating_raw = device.get("overheating")
+
         result.append(
             DeviceInfo(
                 mac=str(device.get("mac", "")),
@@ -408,6 +439,8 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
                 total_ports=total_ports,
                 firmware_version=firmware_version,
                 firmware_latest_version=firmware_latest_version,
+                anomalies=anomalies,
+                overheating=bool(overheating_raw) if overheating_raw is not None else None,
                 radios=radios,
                 ports=ports,
             )

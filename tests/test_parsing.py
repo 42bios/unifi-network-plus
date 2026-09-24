@@ -130,11 +130,15 @@ def test_parse_top_clients_wireless_extras_from_live_fixture() -> None:
         "ccq": 333,
         "essid": "MyHomeWiFi",
         "channel": 36,
+        "network": "CLIENTS",
+        "vlan": 30,
     }
     top = parse_top_clients([client], count=1)
     assert top[0].ccq == 333
     assert top[0].essid == "MyHomeWiFi"
     assert top[0].channel == 36
+    assert top[0].network_name == "CLIENTS"
+    assert top[0].vlan == 30
 
 
 def test_parse_top_clients_wired_extras_are_none() -> None:
@@ -348,11 +352,23 @@ _LIVE_SWITCH_DEVICE_FIXTURE = {
     "num_sta": 33,
     "satisfaction": 92,
     "system-stats": {"cpu": "2.3", "mem": "80.2"},
+    "anomalies": -1,
+    "overheating": None,
     "port_table": [
-        {"port_idx": 1, "up": True, "poe_power": "12.34", "speed": 1000, "name": "Port 1"},
-        {"port_idx": 2, "up": True, "poe_power": "0.00", "speed": 100, "name": "Port 2"},
-        {"port_idx": 3, "up": False, "speed": 0, "name": "Port 3"},
+        {
+            "port_idx": 1,
+            "up": True,
+            "poe_power": "12.34",
+            "speed": 1000,
+            "name": "Port 1",
+            "media": "GE",
+            "rx_bytes-r": 779.3106246576455,
+            "tx_bytes-r": 119.49443103203426,
+        },
+        {"port_idx": 2, "up": True, "poe_power": "0.00", "speed": 100, "name": "Port 2", "media": "GE"},
+        {"port_idx": 3, "up": False, "speed": 0, "name": "Port 3", "media": "GE"},
         {"port_idx": 4, "up": True, "name": "Port 4"},  # no poe_power key at all (non-PoE port)
+        {"port_idx": 5, "up": True, "speed": 10000, "name": "SFP+ Uplink", "media": "SFP+"},
     ],
 }
 
@@ -400,21 +416,52 @@ def test_parse_devices_switch_aggregates_ports() -> None:
     # 12.34 + 0.00 (port 3 excluded: down but has no poe_power anyway; port
     # 4 excluded: no poe_power key at all, i.e. not a PoE-capable port)
     assert device.poe_power_watts == 12.34
-    assert device.active_ports == 3  # ports 1, 2, 4 are up
-    assert device.total_ports == 4
+    assert device.active_ports == 4  # ports 1, 2, 4, 5 are up
+    assert device.total_ports == 5
 
 
 def test_parse_devices_switch_per_port_detail() -> None:
     device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
-    assert len(device.ports) == 4
+    assert len(device.ports) == 5
     port1 = device.ports[0]
     assert port1.port_idx == 1
     assert port1.name == "Port 1"
     assert port1.is_up is True
     assert port1.speed_mbps == 1000
     assert port1.poe_power_watts == 12.34
+    assert port1.media == "GE"
+    # 779.3106246576455 * 8 / 1e6, 119.49443103203426 * 8 / 1e6
+    assert port1.rx_mbps == 0.006
+    assert port1.tx_mbps == 0.001
     port4 = device.ports[3]
     assert port4.poe_power_watts is None  # no poe_power key on this port
+    assert port4.rx_mbps is None  # no rx_bytes-r key on this port
+    port5 = device.ports[4]
+    assert port5.media == "SFP+"  # fibre/DAC uplink, not copper
+
+
+def test_parse_devices_anomalies_sentinel_minus_one_is_none() -> None:
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
+    assert device.anomalies is None
+
+
+def test_parse_devices_anomalies_real_count() -> None:
+    fixture = {**_LIVE_SWITCH_DEVICE_FIXTURE, "anomalies": 2}
+    device = parse_devices([fixture])[0]
+    assert device.anomalies == 2
+
+
+def test_parse_devices_overheating_null_stays_none() -> None:
+    # Confirmed live: seen as null (not false) when the controller has no
+    # value to report, not just absent from the payload.
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
+    assert device.overheating is None
+
+
+def test_parse_devices_overheating_true() -> None:
+    fixture = {**_LIVE_SWITCH_DEVICE_FIXTURE, "overheating": True}
+    device = parse_devices([fixture])[0]
+    assert device.overheating is True
 
 
 def test_parse_devices_non_switch_has_no_ports() -> None:

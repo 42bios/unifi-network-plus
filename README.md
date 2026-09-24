@@ -7,19 +7,23 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**239 entities** as of the latest release (vs. the core `unifi`
-integration's 281 in the same environment): WAN throughput, latency, ISP/
-availability, the controller's own periodic ISP speed test, top clients by
-traffic, network-wide AP/switch/guest/IoT counts; per physical device
-(AP/switch/gateway, each its own Home Assistant device) CPU/memory/client-
-count/satisfaction, gateway temperature/storage, switch PoE draw/active-
-port-count and one Firmware update entity; per-switch-port link speed
-+ PoE power (disabled by default - enable individual ports from Settings ->
-Entities if you want them); and a real-time-connection diagnostic sensor
-backed by the controller's WebSocket event stream, used to trigger faster
-refreshes on top of the normal poll interval (see "Polling frequency"
-below). New devices (a newly adopted AP or switch) are picked up
-automatically on the next poll, no restart needed.
+**399 entities** as of the latest release (vs. the core `unifi`
+integration's 281 in the same environment - mostly the per-switch-port
+entities below, which are disabled by default and don't clutter a fresh
+install): WAN throughput, latency, ISP/availability, the controller's own
+periodic ISP speed test, top clients by traffic (including VLAN/network,
+signal, CCQ, SSID and channel), network-wide AP/switch/guest/IoT counts;
+per physical device (AP/switch/gateway, each its own Home Assistant
+device) CPU/memory/client-count/satisfaction/anomalies/overheating,
+gateway temperature/storage, switch PoE draw/active-port-count and one
+Firmware update entity; per-switch-port link speed (with connection type:
+copper/fibre/DAC), PoE power and live download/upload throughput
+(disabled by default - enable individual ports from Settings -> Entities
+if you want them); and a real-time-connection diagnostic sensor backed by
+the controller's WebSocket event stream, used to trigger faster refreshes
+on top of the normal poll interval (see "Polling frequency" below). New
+devices (a newly adopted AP or switch) are picked up automatically on the
+next poll, no restart needed.
 
 **Verified against a live UDM-family (UniFi OS) controller** - see "What
 was verified" below for exactly what that covered and what's still
@@ -153,7 +157,7 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | Switches | `stat/health` → `lan.num_sw` | |
 | Guest Clients / IoT Clients | `stat/health` → `wlan`+`lan`.`num_guest`/`num_iot`, summed | |
 | Monthly Data Usage | `stat/report/daily.gw`, summed for the current calendar month | GB, with download/upload as attributes |
-| Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute, including each client's signal (dBm), CCQ (UniFi's own 0-1000 connection-quality score), SSID and channel for wireless clients |
+| Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute, including each client's signal (dBm), CCQ (UniFi's own 0-1000 connection-quality score), SSID and channel for wireless clients, and network name/VLAN ID for all clients |
 | Connected Clients | `stat/sta` | count |
 
 ### Per physical device (its own Home Assistant device entry)
@@ -167,6 +171,8 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | Storage | `stat/device` → `storage[0]` | gateway |
 | PoE Power | `stat/device` → `port_table[].poe_power`, summed | switches |
 | Active Ports | `stat/device` → `port_table[].up`, counted | switches |
+| Anomalies | `stat/device` → `anomalies` | all types; `-1` = "no data yet", surfaced as unavailable, same convention as Satisfaction |
+| Overheating (`binary_sensor`) | `stat/device` → `overheating` | all types; seen as `null` (not `false`) on every AP tested against, so it goes **unavailable** rather than assuming "not overheating" - switches/gateway reported a real `true`/`false` |
 | Firmware (`update` entity) | `stat/device` → `version`/`upgradable`/`upgrade_to_firmware` | all types; **read-only** - see below |
 
 ### Per AP radio (2.4/5/6GHz, grouped under that AP's device)
@@ -180,14 +186,15 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 
 | Sensor | Source |
 |---|---|
-| Link Speed | `stat/device` → `port_table[].speed` (only reported when the port is up) |
+| Link Speed | `stat/device` → `port_table[].speed` (only reported when the port is up); carries the port's media type (`GE` copper Gigabit, `SFP+` fibre/DAC uplink, etc. - confirmed both present on a live switch) as an attribute |
 | PoE Power | `stat/device` → `port_table[].poe_power` |
+| Download / Upload | `stat/device` → `port_table[].rx_bytes-r` / `tx_bytes-r`, live instantaneous rate (same "-r" convention as the WAN sensors) |
 
-A 48-port switch would otherwise add 96 near-identical entities most users
-never look at port-by-port - the aggregated PoE Power/Active Ports sensors
-on the switch device itself cover the common case. Enable individual ports
-from Settings -> Devices & Services -> Entities if you want to graph one
-specific port.
+A 48-port switch would otherwise add 160+ near-identical entities most
+users never look at port-by-port - the aggregated PoE Power/Active Ports
+sensors on the switch device itself cover the common case. Enable
+individual ports from Settings -> Devices & Services -> Entities if you
+want to graph one specific port.
 
 ### Diagnostic
 
@@ -346,15 +353,19 @@ pytest -q
 
 The intent is for this integration to eventually be a complete
 replacement for the core `unifi` integration, not just a companion to it -
-right now it's at 239 entities against core's 281 in the same environment.
+it's already past core's 281-entity count for this environment (399, most
+of that from the disabled-by-default per-port entities), though entity
+*count* alone isn't the same as feature parity - client presence tracking
+and write/control operations below are the real remaining gap.
 Phases, roughly in order (each phase should land with its own tests before
 starting the next - this file's "bugs found" section exists because
 skipping that step once already cost a debugging session):
 
 1. **Done**: WAN throughput/latency/availability/ISP/speedtest, network-
    wide AP/switch/guest/IoT counts, per-device CPU/memory/satisfaction/
-   temperature/storage/PoE, per-radio channel/TX-retry stats, per-port
-   link-speed/PoE (disabled by default), per-device firmware `update`
+   anomalies/overheating/temperature/storage/PoE, per-radio channel/TX-retry
+   stats, per-port link-speed/connection-type/PoE/throughput (disabled by
+   default), per-client VLAN/CCQ/SSID/channel, per-device firmware `update`
    entities, dynamic device grouping, auto-discovery of new devices,
    WebSocket-triggered real-time refresh with polling fallback.
 2. **Client presence tracking** (`device_tracker` platform) - the single
