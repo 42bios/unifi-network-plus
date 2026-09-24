@@ -52,6 +52,9 @@
       "wan_availability": {
         "name": "WAN Availability"
       },
+      "wan2_availability": {
+        "name": "WAN2 Availability"
+      },
       "wan_drops": {
         "name": "WAN Drops"
       },

@@ -7,7 +7,7 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**238 entities** as of the latest release (vs. the core `unifi`
+**239 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment): WAN throughput, latency, ISP/
 availability, the controller's own periodic ISP speed test, top clients by
 traffic, network-wide AP/switch/guest/IoT counts; per physical device
@@ -144,6 +144,7 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | WAN Latency | `stat/health` → `uptime_stats.WAN.latency_average` | ms (the report endpoint carries no latency field on the tested controller) |
 | WAN Packet Loss | `stat/report/5minutes.gw` | %; **not confirmed** - no matching field found in the live response tested against, see below |
 | WAN Availability | `stat/health` → `uptime_stats.WAN.availability` | %; the controller's own rolling ping/DNS-monitor success rate |
+| WAN2 Availability | `stat/health` → `uptime_stats.WAN2.availability` | %; secondary/failover WAN, same rolling monitor. Goes **unavailable** (not 0%) when the controller has no WAN2 monitor entry at all, which is the common single-WAN case |
 | WAN Drops | `stat/health` → `www.drops` | count |
 | ISP Name | `stat/health` → `www.isp_name` | |
 | Speedtest Download / Upload / Ping | `stat/health` → `www.xput_down` / `xput_up` / `speedtest_ping` | the controller's own periodic/manual "ISP Speed Test" result - **not a continuous live measurement**, reads 0 between runs |
@@ -152,7 +153,7 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | Switches | `stat/health` → `lan.num_sw` | |
 | Guest Clients / IoT Clients | `stat/health` → `wlan`+`lan`.`num_guest`/`num_iot`, summed | |
 | Monthly Data Usage | `stat/report/daily.gw`, summed for the current calendar month | GB, with download/upload as attributes |
-| Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute |
+| Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute, including each client's signal (dBm), CCQ (UniFi's own 0-1000 connection-quality score), SSID and channel for wireless clients |
 | Connected Clients | `stat/sta` | count |
 
 ### Per physical device (its own Home Assistant device entry)
@@ -345,7 +346,7 @@ pytest -q
 
 The intent is for this integration to eventually be a complete
 replacement for the core `unifi` integration, not just a companion to it -
-right now it's at 238 entities against core's 281 in the same environment.
+right now it's at 239 entities against core's 281 in the same environment.
 Phases, roughly in order (each phase should land with its own tests before
 starting the next - this file's "bugs found" section exists because
 skipping that step once already cost a debugging session):

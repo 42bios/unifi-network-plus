@@ -52,6 +52,7 @@ async def async_setup_entry(
             WanLatencySensor(entry, coordinator),
             WanPacketLossSensor(entry, coordinator),
             WanAvailabilitySensor(entry, coordinator),
+            Wan2AvailabilitySensor(entry, coordinator),
             WanDropsSensor(entry, coordinator),
             IspNameSensor(entry, coordinator),
             SpeedtestDownloadSensor(entry, coordinator),
@@ -217,6 +218,33 @@ class WanAvailabilitySensor(UniFiBaseSensor):
     @property
     def native_value(self) -> float | None:
         return self.coordinator.data.wan_health.availability_percent if self.coordinator.data else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
+class Wan2AvailabilitySensor(UniFiBaseSensor):
+    """Secondary WAN (failover) uptime-monitor availability.
+
+    Unavailable (not just 0%) when the controller reports no "WAN2" entry
+    at all in ``uptime_stats`` - most single-WAN setups won't have one, so
+    this entity naturally goes unavailable for them rather than reporting
+    a misleading 0%.
+    """
+
+    _attr_translation_key = "wan2_availability"
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator) -> None:
+        super().__init__(entry, coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_wan2_availability"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.data.wan_health.wan2_availability_percent if self.coordinator.data else None
 
     @property
     def available(self) -> bool:
@@ -464,6 +492,9 @@ class TopClientsSensor(UniFiBaseSensor):
                     "total_bytes": client.total_bytes,
                     "signal_dbm": client.signal_dbm,
                     "is_wired": client.is_wired,
+                    "ccq": client.ccq,
+                    "essid": client.essid,
+                    "channel": client.channel,
                 }
                 for client in self.coordinator.data.top_clients
             ]

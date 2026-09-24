@@ -149,6 +149,14 @@ class TopClient:
     total_bytes: float
     signal_dbm: float | None
     is_wired: bool
+    # Wireless-only (None for wired clients) - confirmed against a live
+    # controller's stat/sta response. ``ccq`` ("Client Connectivity
+    # Quality") is UniFi's own 0-1000 composite radio-quality score, kept
+    # as the raw value rather than re-normalized since its exact formula
+    # isn't publicly documented.
+    ccq: int | None
+    essid: str | None
+    channel: int | None
 
 
 def parse_top_clients(clients: list[dict[str, Any]], count: int) -> list[TopClient]:
@@ -163,6 +171,7 @@ def parse_top_clients(clients: list[dict[str, Any]], count: int) -> list[TopClie
             or client.get("mac")
             or "unknown"
         )
+        is_wired = bool(client.get("is_wired", False))
         parsed.append(
             TopClient(
                 name=name,
@@ -171,7 +180,10 @@ def parse_top_clients(clients: list[dict[str, Any]], count: int) -> list[TopClie
                 tx_bytes=tx,
                 total_bytes=rx + tx,
                 signal_dbm=_num(client.get("signal")),
-                is_wired=bool(client.get("is_wired", False)),
+                is_wired=is_wired,
+                ccq=int(ccq) if not is_wired and (ccq := _num(client.get("ccq"))) is not None else None,
+                essid=client.get("essid") if not is_wired else None,
+                channel=int(ch) if not is_wired and (ch := _num(client.get("channel"))) is not None else None,
             )
         )
     parsed.sort(key=lambda c: c.total_bytes, reverse=True)
@@ -448,6 +460,11 @@ class WanHealth:
     latency_ms: float | None
     rx_rate_mbps: float | None
     tx_rate_mbps: float | None
+    # Secondary WAN (failover) availability - confirmed present in
+    # uptime_stats as its own "WAN2" entry on a live controller even
+    # without a second WAN actually configured (reporting 0% there), so
+    # None here specifically means "no WAN2 entry at all", not "down".
+    wan2_availability_percent: float | None
 
 
 def parse_wan_health(health_entries: list[dict[str, Any]]) -> WanHealth:
@@ -464,10 +481,11 @@ def parse_wan_health(health_entries: list[dict[str, Any]]) -> WanHealth:
     """
     wan = next((e for e in health_entries if e.get("subsystem") == "wan"), None)
     if wan is None:
-        return WanHealth(None, None, None, None, None)
+        return WanHealth(None, None, None, None, None, None)
 
     uptime_stats = wan.get("uptime_stats")
     wan_monitor = uptime_stats.get("WAN") if isinstance(uptime_stats, dict) else None
+    wan2_monitor = uptime_stats.get("WAN2") if isinstance(uptime_stats, dict) else None
 
     rx_rate = _num(wan.get("rx_bytes-r"))
     tx_rate = _num(wan.get("tx_bytes-r"))
@@ -478,6 +496,7 @@ def parse_wan_health(health_entries: list[dict[str, Any]]) -> WanHealth:
         latency_ms=_num(wan_monitor.get("latency_average")) if wan_monitor else None,
         rx_rate_mbps=round(rx_rate * 8 / 1_000_000, 2) if rx_rate is not None else None,
         tx_rate_mbps=round(tx_rate * 8 / 1_000_000, 2) if tx_rate is not None else None,
+        wan2_availability_percent=_num(wan2_monitor.get("availability")) if wan2_monitor else None,
     )
 
 

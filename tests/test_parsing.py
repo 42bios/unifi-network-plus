@@ -117,6 +117,43 @@ def test_parse_top_clients_missing_name_falls_back_to_mac() -> None:
     assert top[0].name == "11:22:33"
 
 
+def test_parse_top_clients_wireless_extras_from_live_fixture() -> None:
+    # Trimmed from a real wireless stat/sta entry on a live UDM-family
+    # controller - not a guess.
+    client = {
+        "name": "Bambu Lab H2D",
+        "mac": "aa:bb:cc:dd:ee:10",
+        "rx_bytes": 12368140584,
+        "tx_bytes": 626868121,
+        "is_wired": False,
+        "signal": -56,
+        "ccq": 333,
+        "essid": "MyHomeWiFi",
+        "channel": 36,
+    }
+    top = parse_top_clients([client], count=1)
+    assert top[0].ccq == 333
+    assert top[0].essid == "MyHomeWiFi"
+    assert top[0].channel == 36
+
+
+def test_parse_top_clients_wired_extras_are_none() -> None:
+    client = {
+        "name": "doorbell",
+        "mac": "aa:bb:cc:dd:ee:11",
+        "rx_bytes": 245178308082,
+        "tx_bytes": 17123691735,
+        "is_wired": True,
+        # A wired client's payload has no ccq/essid/channel fields at all;
+        # simulate that omission rather than asserting on values that
+        # wouldn't be there.
+    }
+    top = parse_top_clients([client], count=1)
+    assert top[0].ccq is None
+    assert top[0].essid is None
+    assert top[0].channel is None
+
+
 def test_parse_devices_with_radio_table_stats() -> None:
     devices = [
         {
@@ -195,6 +232,9 @@ def test_parse_wan_health_extracts_isp_latency_and_live_rate() -> None:
     # 410688 bytes/s * 8 / 1e6 = 3.29 Mbps
     assert result.rx_rate_mbps == 3.29
     assert result.tx_rate_mbps == 3.3
+    # No second WAN configured on the controller this was captured from -
+    # still a real "WAN2" entry, just reporting 0% availability.
+    assert result.wan2_availability_percent == 0.0
 
 
 def test_parse_wan_health_no_wan_subsystem_returns_empty() -> None:
@@ -202,6 +242,7 @@ def test_parse_wan_health_no_wan_subsystem_returns_empty() -> None:
     assert result.isp_name is None
     assert result.availability_percent is None
     assert result.latency_ms is None
+    assert result.wan2_availability_percent is None
 
 
 def test_parse_wan_health_missing_uptime_stats_does_not_crash() -> None:
@@ -209,6 +250,16 @@ def test_parse_wan_health_missing_uptime_stats_does_not_crash() -> None:
     assert result.isp_name == "Some ISP"
     assert result.availability_percent is None
     assert result.latency_ms is None
+    assert result.wan2_availability_percent is None
+
+
+def test_parse_wan_health_no_wan2_entry_is_none_not_zero() -> None:
+    # A controller with no WAN2 monitor entry at all (the common case) must
+    # come back as None, not 0.0 - the distinction the Wan2AvailabilitySensor
+    # relies on to go unavailable rather than showing a misleading 0%.
+    health = [{"subsystem": "wan", "uptime_stats": {"WAN": {"availability": 100.0}}}]
+    result = parse_wan_health(health)
+    assert result.wan2_availability_percent is None
 
 
 # Trimmed from an actual live UDM-family controller's stat/health response.
