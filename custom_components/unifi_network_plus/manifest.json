@@ -2,7 +2,7 @@
   "domain": "unifi_network_plus",
   "name": "UniFi Network+",
   "codeowners": [
-    "@manuel"
+    "@42bios"
   ],
   "config_flow": true,
   "documentation": "https://github.com/42bios/unifi-network-plus",
