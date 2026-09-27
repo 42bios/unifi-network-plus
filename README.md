@@ -136,13 +136,12 @@ each sensor actually reads.
 
 ## Real bugs found (and fixed) against a live controller
 
-This integration was originally built with no access to a real UniFi
-controller. Once one became available, several bugs surfaced immediately -
-recorded here because they're the kind of thing that's easy to reintroduce.
-#1-3 are covered by a regression test; #4-6 are Home Assistant framework
-behaviors (threading rules, entity-base-class property overrides) that
-only show up against a real running HA instance, not something `pytest`
-without one can catch:
+These surfaced during live testing against a real UDM-family controller -
+recorded here because they're the kind of thing that's easy to
+reintroduce. #1-3 are covered by a regression test; #4-6 are Home
+Assistant framework behaviors (threading rules, entity-base-class
+property overrides) that only show up against a real running HA
+instance, not something `pytest` without one can catch:
 
 1. **aiohttp silently drops cookies for bare-IP hosts.** UniFi controllers
    are almost always reached by LAN IP (`192.168.x.x`), not a hostname.
