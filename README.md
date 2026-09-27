@@ -55,6 +55,48 @@ existing `unifi` config entry (281 entities) - none of the above exist as
 entities, not even disabled ones. The core integration simply does not
 fetch or map that data.
 
+## Feature comparison vs. core `unifi`
+
+Read directly from core's own source (`homeassistant/components/unifi/`)
+in the same Home Assistant install this integration was tested against,
+not guessed or taken from marketing copy. ✅ = has it, ❌ = doesn't, only
+one of the two columns is filled in per row (core's own strengths are
+listed honestly, not omitted).
+
+| Area | This integration | core `unifi` |
+|---|---|---|
+| WAN throughput (down/up Mbps), ISP name, WAN Availability %, WAN2, WAN Drops, monthly usage | ✅ | ❌ - only WAN latency |
+| Top Clients ranked list (traffic, CCQ, SSID, channel, VLAN/network, uptime) | ✅ | ❌ |
+| Device Satisfaction score, Anomalies count, Overheating status | ✅ | ❌ |
+| Per-radio channel utilization / TX retries | ✅ | ❌ |
+| Per-port media type (copper/fibre/DAC), "what's connected" (name/mac/ip), live throughput on **both switches and gateways** | ✅ | Partial - port bandwidth/link-speed sensors exist, but switch-only, no media type or "what's connected" |
+| Individual per-client persistent bandwidth RX/TX sensor, wired client link speed | ❌ - in the Top Clients attribute list, not its own entity | ✅ |
+| Client presence (`device_tracker`) | ✅ - one entity per client the controller has **ever** seen (`rest/user`, confirmed 90 vs. a handful online) | Partial - core doesn't call this endpoint at all, so it only tracks clients from its own active/recent pool |
+| Account permission awareness (proactively marks control entities unavailable) | ✅ | ❌ |
+| Realtime WebSocket-triggered refresh (on top of normal polling) | ✅ | Uses WebSocket events as its primary data source instead of polling - a different architecture, not directly comparable |
+| Locate (blink LED, momentary) | ✅ | ❌ |
+| Device LED persistent on/off | ✅ (on/off only) | ✅, as a `light` entity with brightness/color |
+| Restart device | ✅ (soft only) | ✅ (soft only) |
+| PoE port on/off (persistent) | ✅ | ✅ |
+| PoE port power-cycle (momentary) | ❌ | ✅ |
+| Port link enable/disable | ✅ | ✅ |
+| Block/unblock client | ✅ | ✅ |
+| Reconnect (kick) client | ✅ | ❌ |
+| Firmware update - detect | ✅ | ✅ |
+| Firmware update - **install** | ❌ - deliberately deferred, see [Roadmap](#roadmap-toward-feature-parity) | ✅ |
+| WLAN (SSID) enable/disable, regenerate password | ❌ - deferred, see Roadmap | ✅ |
+| Firewall policies, Policy Engine rules, DPI restrictions, port forwarding, traffic rules/routes | ❌ - out of scope so far | ✅ |
+| UniFi smart plug (outlet) control/metering, SmartPower AC budget/consumption | ❌ - not tested against this hardware | ✅ |
+| Bundled automation Blueprints | ✅ (3, optional, not enabled by default) | ❌ |
+
+The short version: this integration goes deep on **statistics and
+diagnostics** (WAN, satisfaction, anomalies, per-port/per-radio detail,
+full client presence) that core doesn't expose at all, while core is
+further ahead on **site-wide network configuration** (firewall, DPI,
+traffic policy, VPN, smart plugs) - a different, larger scope this
+integration hasn't taken on. Complement, not a strict superset, in
+either direction.
+
 ## How it works
 
 - Authenticates locally against the controller's REST API (no cloud
