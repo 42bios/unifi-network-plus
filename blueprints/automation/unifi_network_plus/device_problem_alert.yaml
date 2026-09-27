@@ -1,0 +1,63 @@
+blueprint:
+  name: UniFi Network+ - Device Overheating / Anomaly Alert
+  description: >-
+    Notify when a UniFi device reports overheating, or when its Anomalies
+    count rises above zero. Pick as many of the Overheating/Anomalies
+    entities this integration created as you want to watch - one per
+    physical AP/switch/gateway.
+  domain: automation
+  source_url: https://github.com/manuel-mahr/unifi-network-plus/blob/main/blueprints/automation/unifi_network_plus/device_problem_alert.yaml
+  input:
+    overheating_entities:
+      name: Overheating sensors
+      description: >-
+        The "Overheating" binary_sensor entities to watch (optional - leave
+        empty to only watch Anomalies below).
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: binary_sensor
+            device_class: problem
+    anomaly_entities:
+      name: Anomalies sensors
+      description: >-
+        The "Anomalies" sensor entities to watch (optional - leave empty to
+        only watch Overheating above).
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: sensor
+    notify_action:
+      name: Notification action
+      description: >-
+        The action(s) to run when a problem is detected. Reference
+        "{{ alert_message }}" in your message text to use the ready-made
+        description of what triggered.
+      selector:
+        action: {}
+
+triggers:
+  - trigger: state
+    entity_id: !input overheating_entities
+    to: "on"
+    id: overheating
+  - trigger: numeric_state
+    entity_id: !input anomaly_entities
+    above: 0
+    id: anomalies
+
+variables:
+  alert_message: >-
+    {% if trigger.id == 'overheating' %}
+      UniFi device {{ trigger.to_state.name }} is reporting overheating.
+    {% else %}
+      UniFi device {{ trigger.to_state.name }} has {{ trigger.to_state.state }} anomalies.
+    {% endif %}
+
+conditions: []
+
+actions: !input notify_action

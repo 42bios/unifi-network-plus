@@ -499,6 +499,28 @@ one thing this integration doesn't do yet: WiFi Broadcast (SSID)
 management has a clean, official `enabled` field - see item 8 above if
 that gets built.
 
+## Bundled automation blueprints
+
+Three ready-made [blueprints](https://www.home-assistant.io/docs/automation/using_blueprints/)
+ship under `blueprints/automation/unifi_network_plus/` - optional, not
+enabled by anything on their own. Import one from Settings -> Automations
+-> Blueprints -> Import Blueprint, using the raw GitHub URL of the file,
+or copy it into your own `config/blueprints/automation/` folder.
+
+| Blueprint | What it does |
+|---|---|
+| `device_problem_alert.yaml` | Notify when any of the Overheating binary_sensors turns on, or an Anomalies sensor rises above zero. |
+| `client_presence_notify.yaml` | Notify when one or more `device_tracker` clients arrive home or leave (each direction toggleable). |
+| `wan_outage_alert.yaml` | Notify when WAN Availability drops below a threshold for a sustained period (avoids false alarms from one brief blip). |
+
+Each takes a generic "notification action" input (any action(s) you want -
+a mobile app notification, a TTS announcement, whatever), with a
+ready-made `{{ alert_message }}`/`{{ presence_message }}`/
+`{{ availability_message }}` variable you can drop into your message text.
+Verified against Home Assistant's real blueprint-loading code path (schema
+validation + input substitution, not just YAML syntax) with representative
+dummy inputs for all three - not just eyeballed.
+
 ## License
 
 MIT - see [LICENSE](LICENSE).

@@ -1,0 +1,59 @@
+blueprint:
+  name: UniFi Network+ - WAN / Internet Outage Alert
+  description: >-
+    Notify when the controller's own WAN Availability monitor (its rolling
+    ping/DNS-probe success rate) drops below a threshold for a sustained
+    period - a good proxy for "the internet connection is having problems"
+    that doesn't need Home Assistant's own connectivity to be affected.
+  domain: automation
+  source_url: https://github.com/manuel-mahr/unifi-network-plus/blob/main/blueprints/automation/unifi_network_plus/wan_outage_alert.yaml
+  input:
+    wan_availability_entity:
+      name: WAN Availability sensor
+      description: This integration's "WAN Availability" sensor (percent).
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    threshold:
+      name: Availability threshold (%)
+      description: Alert when availability drops below this value.
+      default: 90
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    for_duration:
+      name: Sustained for
+      description: >-
+        How long availability must stay below the threshold before
+        alerting - avoids a false alarm from one brief blip.
+      default:
+        minutes: 5
+      selector:
+        duration: {}
+    notify_action:
+      name: Notification action
+      description: >-
+        The action(s) to run. Reference "{{ availability_message }}" in
+        your message text to use the ready-made description of what
+        happened.
+      selector:
+        action: {}
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input wan_availability_entity
+    below: !input threshold
+    for: !input for_duration
+
+variables:
+  threshold: !input threshold
+  availability_message: >-
+    WAN availability dropped to {{ trigger.to_state.state }}% (below the
+    {{ '%.0f' | format(threshold | float) }}% threshold).
+
+conditions: []
+
+actions: !input notify_action
