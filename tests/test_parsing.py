@@ -466,6 +466,28 @@ def test_parse_devices_switch_per_port_detail() -> None:
     assert port5.media == "SFP+"  # fibre/DAC uplink, not copper
 
 
+def test_parse_devices_port_enabled_from_inverted_port_security_field() -> None:
+    fixture = {
+        **_LIVE_SWITCH_DEVICE_FIXTURE,
+        "port_table": [
+            {"port_idx": 1, "up": True, "name": "Port 1", "port_security_enabled": False},
+            {"port_idx": 2, "up": True, "name": "Port 2", "port_security_enabled": True},
+            {"port_idx": 3, "up": True, "name": "Port 3"},  # key absent entirely
+        ],
+    }
+    device = parse_devices([fixture])[0]
+    assert device.ports[0].port_enabled is True
+    assert device.ports[1].port_enabled is False
+    assert device.ports[2].port_enabled is None
+
+
+def test_parse_devices_led_override() -> None:
+    device = parse_devices([{**_LIVE_SWITCH_DEVICE_FIXTURE, "led_override": "off"}])[0]
+    assert device.led_override == "off"
+    device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]  # key absent
+    assert device.led_override is None
+
+
 def test_parse_devices_port_connected_mac_ip_from_last_connection() -> None:
     device = parse_devices([_LIVE_SWITCH_DEVICE_FIXTURE])[0]
     port1 = device.ports[0]

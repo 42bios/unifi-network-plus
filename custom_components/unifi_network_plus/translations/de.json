@@ -163,6 +163,12 @@
       "port_poe_switch": {
         "name": "{port} PoE"
       },
+      "port_enabled_switch": {
+        "name": "{port} Aktiviert"
+      },
+      "device_led": {
+        "name": "LED"
+      },
       "block_client": {
         "name": "{client} sperren"
       }
@@ -170,6 +176,9 @@
     "button": {
       "reconnect_client": {
         "name": "{client} neu verbinden"
+      },
+      "restart_device": {
+        "name": "Neustart"
       }
     }
   }

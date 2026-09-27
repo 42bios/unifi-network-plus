@@ -7,7 +7,7 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**886 entities** as of the latest release (vs. the core `unifi`
+**946 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment - mostly per-client and
 per-port entities, most of which are disabled by default and don't
 clutter a fresh install): WAN throughput, latency, ISP/availability, the
@@ -22,13 +22,14 @@ network it carries) PoE power and live download/upload throughput on
 **both switches and gateways** (disabled by default - enable individual
 ports from Settings -> Entities if you want them); a real-time-connection
 and an account-permission diagnostic sensor, the latter backed by an
-internal site-role check that also gates the control entities below;
-`switch` entities to locate (blink) a device, control per-port PoE
-power, or block a client from the network, and a button to force a
-client to reconnect (all write operations - see the permissions note in
-Setup); and a `device_tracker` entity per client the controller has ever
-seen, for real presence tracking (`home`/`not_home`), built from the
-full known-client roster rather than just who's currently connected. New
+internal site-role check that also gates every control entity below;
+`switch` entities to locate (blink) a device, turn its status LED on/off,
+control per-port PoE power or link enable/disable, or block a client from
+the network, plus buttons to soft-restart a device or force a client to
+reconnect (all write operations - see the permissions note in Setup); and
+a `device_tracker` entity per client the controller has ever seen, for
+real presence tracking (`home`/`not_home`), built from the full
+known-client roster rather than just who's currently connected. New
 devices/clients are picked up automatically on the next poll, no restart
 needed.
 
@@ -240,12 +241,15 @@ State is `home`/`not_home`, with `is_wired`, `is_guest`, `is_blocked`, `last_see
 
 | Entity | What it does |
 |---|---|
-| Locate (`switch`) | Starts/stops a device's locate (blink LED) mode. Purely cosmetic, fully reversible, enabled by default. |
+| Locate (`switch`) | Starts/stops a device's locate (blink LED) mode. Purely cosmetic, fully reversible, enabled by default. **Verified live**: actually toggled a real gateway's LED on then off. |
+| LED (`switch`) | Turns a device's status LED persistently on/off (distinct from Locate's temporary blink) - the permanent "keep it dark" preference. Cosmetic, enabled by default. |
 | Port PoE (`switch`, per switch port, **disabled by default**) | Turns PoE power on ("auto") or off for one port. This can disconnect whatever is plugged into that port (an AP, camera, ...) - only enable it for a specific port you've deliberately chosen to control. |
+| Port Enabled (`switch`, per port, **disabled by default**) | Enables/disables a port's forwarding at the link level - same risk as Port PoE, just not power-based. A port can have both entities if it supports both. |
 | Block Client (`switch`, per client, **disabled by default**) | Blocks/unblocks a client from the network entirely - the classic parental-control/access-control action. |
 | Reconnect Client (`button`, per client, **disabled by default**) | Forces a connected client to disconnect and immediately re-associate - not a block, just a nudge for a client stuck on a bad AP/band. |
+| Restart (`button`, per device, **disabled by default**) | Soft-restarts a device. Real, disruptive action - the device and everything connected through it briefly goes offline. |
 
-All four go **unavailable** (rather than failing only when used) when the Account Permission sensor above reports anything other than `admin`.
+All of the above go **unavailable** (rather than failing only when used) when the Account Permission sensor above reports anything other than `admin`.
 
 The Firmware update entity is **read-only**: it reports whether an update
 is available (`installed_version`/`latest_version`), but does not
@@ -458,13 +462,42 @@ skipping that step once already cost a debugging session):
    is ready for it); consider surfacing per-monitor WAN detail
    (`uptime_stats.WAN.monitors`) as attributes on the WAN Availability
    sensor.
-6. Revisit whether the Firmware `update` entity should support
-   `async_install` once the rest of this list is solid - see the caveat
-   in the Sensors section above for why it doesn't yet.
-7. WiFi network (SSID) enable/disable `switch` - deliberately deferred:
+6. **Done**: Restart (`button`), Device LED (`switch`), Port Enabled
+   (`switch`) - the remaining moderate-risk device/port actions, same
+   risk class and sign-off approach as PoE/Locate. Requests cross-checked
+   against aiounifi's `DeviceRestartRequest` (always "soft", not "hard",
+   to keep a PoE switch restart from also power-cycling every port),
+   `DeviceSetLedStatus` and `DeviceSetPortEnabledRequest`. Restart is
+   disabled by default given its real disruption; LED is enabled by
+   default like Locate (purely cosmetic).
+7. Revisit whether the Firmware `update` entity should support
+   `async_install` once wanted - exact mechanism already confirmed
+   (`cmd/devmgr` upgrade, matching aiounifi's `DeviceUpgradeRequest`) but
+   not implemented: this is the highest-risk item left (an actual remote
+   firmware flash), and deliberately awaits its own explicit sign-off
+   rather than being bundled with the phase-6 items above.
+8. WiFi network (SSID) enable/disable `switch` - deliberately deferred:
    unlike PoE (one port, one device), disabling an SSID drops every client
-   connected to it at once. Revisit if wanted, with the same live-tested,
-   sign-off-first approach as PoE control above.
+   connected to it at once. Would also need UniFi's newer API-key-based
+   REST API (see below) rather than the legacy endpoints everything else
+   here uses, since that's the officially documented path for it.
+
+## On UniFi's official REST API (developer.ui.com)
+
+UniFi Network ships an official, versioned, API-key-authenticated REST
+API (`X-API-KEY` header, separate from the username/password this
+integration otherwise uses) - evaluated as a possible replacement for
+some of the reverse-engineered legacy endpoints above, via its published
+OpenAPI spec. Decided against adopting it for anything this integration
+already does: its device/port/client "actions" are much more limited
+than the legacy API (`RESTART` only for devices - no locate; `POWER_CYCLE`
+only for ports - no persistent on/off; guest-portal authorize/
+unauthorize only for clients - no block/reconnect), and its device
+statistics endpoint is leaner than `stat/device` (no satisfaction,
+anomalies, overheating, or per-port detail). It's a good fit for exactly
+one thing this integration doesn't do yet: WiFi Broadcast (SSID)
+management has a clean, official `enabled` field - see item 8 above if
+that gets built.
 
 ## License
 

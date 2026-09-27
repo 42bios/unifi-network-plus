@@ -575,3 +575,97 @@ async def test_reconnect_client_sends_kick_command(api_module) -> None:
 
         calls = _calls_for(mocked, "POST", "/cmd/stamgr")
         assert calls[0].kwargs["json"] == {"cmd": "kick-sta", "mac": "aa:bb:cc:dd:ee:ff"}
+
+
+@pytest.mark.asyncio
+async def test_set_port_enabled_updates_only_target_port(api_module) -> None:
+    """port_security_enabled is inverted: enabled=True -> port_security_enabled=False."""
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/s/default/stat/device",
+                status=200,
+                payload={
+                    "data": [
+                        {
+                            "mac": "sw:mac",
+                            "_id": "device-id-123",
+                            "port_overrides": [{"port_idx": 1, "port_security_enabled": False}],
+                            "port_table": [{"port_idx": 1}],
+                        }
+                    ]
+                },
+            )
+            mocked.put(
+                "https://udm.local:443/proxy/network/api/s/default/rest/device/device-id-123",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_port_enabled("sw:mac", 1, False)
+
+        calls = _calls_for(mocked, "PUT", "/rest/device/device-id-123")
+        body = calls[0].kwargs["json"]
+        assert body["port_overrides"] == [{"port_idx": 1, "port_security_enabled": True}]
+
+
+@pytest.mark.asyncio
+async def test_set_device_led_puts_led_override(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/s/default/stat/device",
+                status=200,
+                payload={"data": [{"mac": "aa:bb", "_id": "device-id-456"}]},
+            )
+            mocked.put(
+                "https://udm.local:443/proxy/network/api/s/default/rest/device/device-id-456",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_device_led("aa:bb", "off")
+
+        calls = _calls_for(mocked, "PUT", "/rest/device/device-id-456")
+        assert calls[0].kwargs["json"] == {"led_override": "off"}
+
+
+@pytest.mark.asyncio
+async def test_restart_device_sends_soft_restart_command(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.post(
+                "https://udm.local:443/proxy/network/api/s/default/cmd/devmgr",
+                status=200,
+                payload={"data": []},
+            )
+            await client.restart_device("aa:bb:cc:dd:ee:ff")
+
+        calls = _calls_for(mocked, "POST", "/cmd/devmgr")
+        assert calls[0].kwargs["json"] == {
+            "cmd": "restart",
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "reboot_type": "soft",
+        }

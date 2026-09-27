@@ -239,6 +239,10 @@ class PortStat:
     # "auto"/"off"/"24v"/"passthrough" - only present on PoE-capable ports
     # (confirmed absent on non-PoE ports, matching poe_power_watts).
     poe_mode: str | None
+    # Whether the port's forwarding is enabled - inverted from the raw
+    # "port_security_enabled" field (see api.py::set_port_enabled for why
+    # that name is misleading). Confirmed present on switch ports tested.
+    port_enabled: bool | None
     # The network this port carries, e.g. "wan", "wan2", "lan" - confirmed
     # on a UXG-PRO gateway's ports (a switch's ports didn't carry it in
     # the fixtures tested, hence nullable).
@@ -293,6 +297,9 @@ class DeviceInfo:
     overheating: bool | None
     # Whether the device's locate (blink LED) mode is currently active.
     locating: bool | None
+    # "on"/"off"/"default" (follows the site-wide LED setting) - confirmed
+    # live as "off" on an AP.
+    led_override: str | None
     radios: list[RadioStat] = field(default_factory=list)
     ports: list[PortStat] = field(default_factory=list)
 
@@ -384,6 +391,7 @@ def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
                 tx_mbps=round(tx_rate * 8 / 1_000_000, 3) if tx_rate is not None else None,
                 media=p.get("media"),
                 poe_mode=p.get("poe_mode"),
+                port_enabled=(not p["port_security_enabled"]) if "port_security_enabled" in p else None,
                 network_name=p.get("network_name"),
                 connected_mac=last_connection.get("mac") if last_connection else None,
                 connected_ip=last_connection.get("ip") if last_connection else None,
@@ -475,6 +483,7 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
                 anomalies=anomalies,
                 overheating=bool(overheating_raw) if overheating_raw is not None else None,
                 locating=bool(device.get("locating")) if device.get("locating") is not None else None,
+                led_override=device.get("led_override"),
                 radios=radios,
                 ports=ports,
             )

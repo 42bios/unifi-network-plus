@@ -16,6 +16,11 @@ deliberately small in scope:
   Disabled by default, same reasoning as PoePortSwitch - this is a
   deliberate per-client action, not something to have 90-odd of enabled
   out of the box.
+- ``PortEnabledSwitch``: enables/disables a switch port's forwarding
+  entirely - disabled by default, same reasoning as PoePortSwitch (cuts
+  off whatever's on that port, just at the link level instead of power).
+- ``DeviceLedSwitch``: on/off/default LED override - the low-risk,
+  cosmetic-only one of this bunch, enabled by default like LocateSwitch.
 """
 
 from __future__ import annotations
@@ -48,7 +53,8 @@ async def async_setup_entry(
     coordinator: UniFiNetworkPlusCoordinator = hass.data[DOMAIN][entry.entry_id][RUNTIME_COORDINATOR]
 
     known_device_macs: set[str] = set()
-    known_port_keys: set[tuple[str, int]] = set()
+    known_poe_port_keys: set[tuple[str, int]] = set()
+    known_enable_port_keys: set[tuple[str, int]] = set()
     known_client_macs: set[str] = set()
 
     def _discover_new_entities() -> None:
@@ -59,13 +65,16 @@ async def async_setup_entry(
             if device.mac not in known_device_macs:
                 known_device_macs.add(device.mac)
                 new_entities.append(LocateSwitch(entry, coordinator, device.mac))
+                if device.led_override is not None:
+                    new_entities.append(DeviceLedSwitch(entry, coordinator, device.mac))
             for port in device.ports:
-                if port.poe_mode is None:
-                    continue  # not a PoE-capable port
                 key = (device.mac, port.port_idx)
-                if key not in known_port_keys:
-                    known_port_keys.add(key)
+                if port.poe_mode is not None and key not in known_poe_port_keys:
+                    known_poe_port_keys.add(key)
                     new_entities.append(PoePortSwitch(entry, coordinator, device.mac, port.port_idx))
+                if port.port_enabled is not None and key not in known_enable_port_keys:
+                    known_enable_port_keys.add(key)
+                    new_entities.append(PortEnabledSwitch(entry, coordinator, device.mac, port.port_idx))
         for client in coordinator.data.tracked_clients:
             if client.mac not in known_client_macs:
                 known_client_macs.add(client.mac)
@@ -197,6 +206,92 @@ class PoePortSwitch(_DeviceControlBase):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.coordinator.client.set_port_poe_mode(self._device_mac, self._port_idx, "off")
+        await self.coordinator.async_request_refresh()
+
+
+class PortEnabledSwitch(_DeviceControlBase):
+    """Enable/disable one switch port's forwarding entirely.
+
+    Disabled by default: flipping the wrong port cuts off whatever is
+    plugged into it, same reasoning as PoePortSwitch (this is the link-
+    level equivalent; a port can have both entities if it supports both).
+    """
+
+    _attr_translation_key = "port_enabled_switch"
+    _attr_icon = "mdi:ethernet"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac)
+        self._port_idx = port_idx
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_port{port_idx}_enabled_switch"
+        port = self._find_port()
+        self._attr_translation_placeholders = {"port": port.name if port else f"Port {port_idx}"}
+
+    def _find_port(self):
+        device = self._find_device()
+        if not device:
+            return None
+        for port in device.ports:
+            if port.port_idx == self._port_idx:
+                return port
+        return None
+
+    @property
+    def is_on(self) -> bool | None:
+        port = self._find_port()
+        return port.port_enabled if port else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._find_port() is not None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_port_enabled(self._device_mac, self._port_idx, True)
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_port_enabled(self._device_mac, self._port_idx, False)
+        await self.coordinator.async_request_refresh()
+
+
+class DeviceLedSwitch(_DeviceControlBase):
+    """Turn a device's status LED on or off persistently.
+
+    Distinct from LocateSwitch (a temporary attention-getting blink) -
+    this is the permanent "keep the LED dark" preference some people want
+    for devices in bedrooms/living spaces. Purely cosmetic, enabled by
+    default like Locate.
+    """
+
+    _attr_translation_key = "device_led"
+    _attr_icon = "mdi:led-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator, device_mac: str) -> None:
+        super().__init__(entry, coordinator, device_mac)
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_led"
+
+    @property
+    def is_on(self) -> bool | None:
+        device = self._find_device()
+        if not device or device.led_override is None:
+            return None
+        return device.led_override == "on"
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_device_led(self._device_mac, "on")
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_device_led(self._device_mac, "off")
         await self.coordinator.async_request_refresh()
 
 

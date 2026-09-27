@@ -384,14 +384,31 @@ class UniFiClient:
         )
 
     async def set_port_poe_mode(self, switch_mac: str, port_idx: int, mode: str) -> None:
-        """Set one switch port's PoE mode ("auto", "off", "24v", "passthrough").
+        """Set one switch port's PoE mode ("auto", "off", "24v", "passthrough")."""
+        await self._update_port_override(switch_mac, port_idx, "poe_mode", mode)
 
-        Read-modify-write: re-fetches the current device (including its
-        live ``port_overrides``) immediately before writing, rather than
-        reusing a possibly-stale coordinator snapshot, and only touches the
-        one port's ``poe_mode`` - every other port's override is sent back
-        unchanged, matching aiounifi's approach of never reconstructing
-        overrides from scratch.
+    async def set_port_enabled(self, switch_mac: str, port_idx: int, enabled: bool) -> None:
+        """Enable/disable one switch port's forwarding entirely.
+
+        Confusingly named at the API level - despite the field being called
+        ``port_security_enabled``, this isn't the MAC-allowlist "port
+        security" feature; it's the same "Operation: Enabled/Disabled"
+        toggle UniFi's own port config UI exposes, inverted (``enabled=True``
+        -> ``port_security_enabled=False``), matching aiounifi's
+        ``DeviceSetPortEnabledRequest``.
+        """
+        await self._update_port_override(switch_mac, port_idx, "port_security_enabled", not enabled)
+
+    async def _update_port_override(self, switch_mac: str, port_idx: int, field: str, value: Any) -> None:
+        """Read-modify-write one field of one port's override.
+
+        Re-fetches the current device (including its live ``port_overrides``)
+        immediately before writing, rather than reusing a possibly-stale
+        coordinator snapshot, and only touches the target field on the one
+        port - every other port's override, and every other field on this
+        port's override, is sent back unchanged. Matches aiounifi's approach
+        of never reconstructing overrides from scratch (see
+        ``DeviceSetPoePortModeRequest``/``DeviceSetPortEnabledRequest``).
         """
         devices = await self.get_devices()
         device = next((d for d in devices if d.get("mac") == switch_mac), None)
@@ -406,12 +423,12 @@ class UniFiClient:
         for override in device.get("port_overrides") or []:
             override = dict(override)
             if override.get("port_idx") == port_idx:
-                override["poe_mode"] = mode
+                override[field] = value
                 found = True
             new_overrides.append(override)
 
         if not found:
-            new_override: dict[str, Any] = {"port_idx": port_idx, "poe_mode": mode}
+            new_override: dict[str, Any] = {"port_idx": port_idx, field: value}
             port_table = device.get("port_table") or []
             port_entry = next((p for p in port_table if p.get("port_idx") == port_idx), None)
             if port_entry and port_entry.get("portconf_id"):
@@ -422,6 +439,39 @@ class UniFiClient:
             "PUT",
             f"rest/device/{device_id}",
             json_body={"port_overrides": new_overrides},
+        )
+
+    async def set_device_led(self, mac: str, status: str) -> None:
+        """Set a device's LED override ("on"/"off"/"default" - "default"
+        follows the site-wide LED setting). Confirmed live: an AP reported
+        ``led_override: "off"``, so at least "off" is a real value on this
+        controller.
+        """
+        devices = await self.get_devices()
+        device = next((d for d in devices if d.get("mac") == mac), None)
+        if device is None:
+            raise UniFiApiError(f"Device {mac} not found")
+        device_id = device.get("_id")
+        if not device_id:
+            raise UniFiApiError(f"Device {mac} has no _id")
+        await self._request(
+            "PUT",
+            f"rest/device/{device_id}",
+            json_body={"led_override": status},
+        )
+
+    async def restart_device(self, mac: str) -> None:
+        """Soft-restart a device (AP/switch/gateway).
+
+        Always "soft" (not "hard", which on a PoE switch also power-cycles
+        every port) - deliberately not exposing the hard-reboot option to
+        keep this action's blast radius limited to "this one device
+        reboots", matching aiounifi's DeviceRestartRequest default.
+        """
+        await self._request(
+            "POST",
+            "cmd/devmgr",
+            json_body={"cmd": "restart", "mac": mac, "reboot_type": "soft"},
         )
 
     # ------------------------------------------------------------------
