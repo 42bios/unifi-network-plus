@@ -104,36 +104,27 @@ listed honestly, not omitted).
 | UniFi smart plug (outlet) control/metering, SmartPower AC budget/consumption | ❌ - not tested against this hardware | ✅ |
 | Bundled automation Blueprints | ✅ (3, optional, not enabled by default) | ❌ |
 
-The short version: this integration goes deep on **statistics and
-diagnostics** (WAN, satisfaction, anomalies, per-port/per-radio detail,
-full client presence) that core doesn't expose at all, while core is
-further ahead on **site-wide network configuration** (firewall, DPI,
-traffic policy, VPN, smart plugs) - a different, larger scope this
-integration hasn't taken on. Complement, not a strict superset, in
-either direction.
+Short version: this integration goes deep on **statistics and
+diagnostics** core doesn't expose at all; core is further ahead on
+**site-wide network configuration** (firewall, DPI, traffic policy, VPN,
+smart plugs) - a larger scope this integration hasn't taken on.
+Complement, not a strict superset, in either direction.
 
 ## How it works
 
-- Authenticates locally against the controller's REST API (no cloud
-  account involved): `POST /api/auth/login` on UniFi OS consoles
-  (UDM/UDM-Pro/UDR/Cloud Key Gen2+), or `POST /api/login` on classic
-  controllers / Cloud Key Gen1. UniFi OS responses carry a CSRF token
-  (`X-CSRF-Token` header, sometimes only inside the `TOKEN` cookie's JWT
-  payload) that is then sent back on every subsequent request - **on every
-  request, not just state-changing ones**, see the bugs section below for
-  why that matters.
-- Reads data from `stat/sta` (clients), `stat/device` (APs/switches/
-  gateways, including per-radio stats), `stat/health` (subsystem status,
-  including WAN ISP/latency/availability), and
-  `stat/report/{5minutes,hourly,daily}.gw` (WAN throughput/usage history),
-  scoped under `/api/s/<site>/...` (classic) or
-  `/proxy/network/api/s/<site>/...` (UniFi OS).
-- Polls on a `DataUpdateCoordinator` (default 60s, configurable) and
-  exposes the parsed results as sensors, grouped as Home Assistant devices
-  per physical UniFi device (each AP gets its own device entry, linked to
-  the controller device via `via_device`). Historical charts for the
-  numeric sensors (WAN Mbps, latency, etc.) come for free from Home
-  Assistant's own Recorder/History - no custom charting needed.
+- Authenticates locally (no cloud account): `POST /api/auth/login` on
+  UniFi OS consoles (UDM/UDM-Pro/UDR/Cloud Key Gen2+), `POST /api/login`
+  on classic controllers/Cloud Key Gen1. The CSRF token UniFi OS returns
+  is sent back on **every** request, not just state-changing ones - see
+  the bugs section for why.
+- Reads `stat/sta` (clients), `stat/device` (APs/switches/gateways +
+  per-radio stats), `stat/health` (subsystem/WAN status), and
+  `stat/report/{5minutes,hourly,daily}.gw` (WAN history), scoped under
+  `/api/s/<site>/...` (classic) or `/proxy/network/api/s/<site>/...`
+  (UniFi OS).
+- Polls on a `DataUpdateCoordinator` (default 60s, configurable), one HA
+  device per physical UniFi device. Historical charts come free from
+  HA's own Recorder/History.
 
 ### Why not just use `aiounifi`?
 
@@ -217,21 +208,19 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 
 ### Per port (grouped under that device's own entry, **disabled by default**)
 
-Applies to **both switches and gateways** - confirmed live that a UXG-PRO's
-WAN/WAN2/LAN/SFP+ ports carry the same `port_table` shape as a switch's
-(gateway ports just aren't PoE sources, so PoE Power there reads `None`).
+Applies to **both switches and gateways** (confirmed on a UXG-PRO's
+WAN/WAN2/LAN/SFP+ ports; gateway ports just aren't PoE sources, so PoE
+Power there reads `None`).
 
 | Sensor | Source |
 |---|---|
-| Link Speed | `stat/device` → `port_table[].speed` (only reported when the port is up); carries the port's media type (`GE` copper Gigabit, `SFP+` fibre/DAC uplink, etc.) and, when present, which network it carries (`wan`/`wan2`/`lan`, confirmed on a gateway) as attributes |
+| Link Speed | `stat/device` → `port_table[].speed`, with media type (`GE`/`SFP+`/...) and network (`wan`/`wan2`/`lan`) as attributes |
 | PoE Power | `stat/device` → `port_table[].poe_power` |
-| Download / Upload | `stat/device` → `port_table[].rx_bytes-r` / `tx_bytes-r`, live instantaneous rate (same "-r" convention as the WAN sensors) |
+| Download / Upload | `stat/device` → `port_table[].rx_bytes-r` / `tx_bytes-r`, live instantaneous rate |
 
-A 48-port switch would otherwise add 160+ near-identical entities most
-users never look at port-by-port - the aggregated PoE Power/Active Ports
-sensors on the switch device itself cover the common case. Enable
-individual ports from Settings -> Devices & Services -> Entities if you
-want to graph one specific port.
+Disabled by default so a 48-port switch doesn't add 160+ entities most
+users never look at port-by-port - enable individual ones from Settings
+-> Devices & Services -> Entities.
 
 ### Client presence (`device_tracker`, one per client the controller has ever seen via `rest/user`)
 
@@ -256,21 +245,13 @@ State is `home`/`not_home`, with `is_wired`, `is_guest`, `is_blocked`, `last_see
 | Reconnect Client (`button`, per client, **disabled by default**) | Forces a connected client to disconnect and immediately re-associate - not a block, just a nudge for a client stuck on a bad AP/band. |
 | Restart (`button`, per device, **disabled by default**) | Soft-restarts a device. Real, disruptive action - the device and everything connected through it briefly goes offline. |
 
-All of the above go **unavailable** (rather than failing only when used) when the Account Permission sensor above reports anything other than `admin`.
+All of the above go **unavailable** (not just fail on use) when Account
+Permission reports anything other than `admin`.
 
-The Firmware update entity is **read-only**: it reports whether an update
-is available (`installed_version`/`latest_version`), but does not
-implement installing one. Triggering a firmware flash on network
-infrastructure remotely, from Home Assistant, without a very deliberate
-separate opt-in felt like more risk than this integration should take on
-by default - see [Roadmap](#roadmap-toward-feature-parity) if you want
-that changed.
-
-WiFi connectivity success rate (association/authentication/DHCP/DNS %) was
-investigated but **not implemented**: not present anywhere in the
-`stat/health`/`stat/device` payloads captured from the test controller.
-`parsing.py` is structured so it can be added the same way as the other
-fields if you find it on your controller version.
+The Firmware `update` entity is **read-only** (detects, doesn't install -
+see [Roadmap](#roadmap-toward-feature-parity)). WiFi connectivity success
+rate (association/auth/DHCP/DNS %) was investigated but not implemented -
+not present anywhere in the tested controller's payloads.
 
 ## Polling frequency - is this "live"?
 
@@ -349,29 +330,19 @@ You will need:
 - A **local** account with (at minimum) read access to the site.
 - The site name (`default` unless you use multiple sites).
 
-**Recommended: create a dedicated local account** for this integration
-rather than reusing your Ubiquiti cloud/admin login. In the UniFi Network
-app: Settings → Admins → Add Admin → "Restrict to local access only".
-This limits the blast radius if the credentials stored in Home Assistant
-were ever compromised, and avoids sending cloud SSO credentials to a
-local integration at all.
+**Recommended: create a dedicated local account** rather than reusing
+your Ubiquiti cloud/admin login (UniFi Network app: Settings → Admins →
+Add Admin → "Restrict to local access only") - limits the blast radius
+if credentials stored in Home Assistant were ever compromised.
 
-**"View Only" vs. "Full Management" permissions - confirmed live:**
-"View Only" is sufficient for every sensor/binary_sensor/update entity
-(everything this integration only reads). The **Locate** and **PoE Port**
-`switch` entities are write operations and need "Full Management"
-(Admin) rights on the site - tested against a "View Only" account and
-the controller correctly rejected both with HTTP 403, which this
-integration surfaces as a clear log error rather than a silent failure.
-If you don't plan to use those two control entities, "View Only" remains
-the safer default; grant "Full Management" only if you specifically want
-device locate/PoE control from Home Assistant.
+**"View Only" vs. "Full Management":** "View Only" covers every
+sensor/binary_sensor/update entity. The **Control** entities need "Full
+Management" - tested live against a "View Only" account, which the
+controller correctly rejects with HTTP 403 (surfaced as a log error, not
+a silent failure). Grant "Full Management" only if you want those.
 
-Note: the controller applies a short login-attempt rate limit
-(`AUTHENTICATION_FAILED_LIMIT_REACHED`, HTTP 429) after a handful of failed
-logins in quick succession - if you hit that while testing credentials,
-wait a minute or two before retrying rather than repeatedly resubmitting
-the config flow.
+Note: the controller rate-limits failed logins (`AUTHENTICATION_FAILED_LIMIT_REACHED`,
+HTTP 429) - wait a minute before retrying if you hit it while testing credentials.
 
 Config flow fields:
 
@@ -399,9 +370,7 @@ the file is generated - nothing identifying leaves your machine.
   - `parsing.py` - pure functions turning raw JSON into typed data (unit tested)
   - `coordinator.py` - `DataUpdateCoordinator` polling glue
   - `config_flow.py`, `sensor.py`, `const.py`, `__init__.py`
-  - `brand/` - the integration's icon/logo (reused from the official UniFi
-    brand assets Home Assistant already ships for the core `unifi`
-    integration, since this is the same product family - not a new logo)
+  - `brand/` - icon/logo, reused from HA's own core-`unifi` brand assets
 - `tests/` - `pytest` unit tests (parsing + mocked-HTTP API client), no live controller required
 - `hacs.json`, `LICENSE`, `.github/workflows/` - HACS/CI plumbing
 
@@ -469,13 +438,11 @@ or copy it into your own `config/blueprints/automation/` folder.
 | `client_presence_notify.yaml` | Notify when one or more `device_tracker` clients arrive home or leave (each direction toggleable). |
 | `wan_outage_alert.yaml` | Notify when WAN Availability drops below a threshold for a sustained period (avoids false alarms from one brief blip). |
 
-Each takes a generic "notification action" input (any action(s) you want -
-a mobile app notification, a TTS announcement, whatever), with a
-ready-made `{{ alert_message }}`/`{{ presence_message }}`/
-`{{ availability_message }}` variable you can drop into your message text.
-Verified against Home Assistant's real blueprint-loading code path (schema
-validation + input substitution, not just YAML syntax) with representative
-dummy inputs for all three - not just eyeballed.
+Each takes a generic "notification action" input (mobile app, TTS,
+whatever) plus a ready-made `{{ alert_message }}`/`{{ presence_message }}`/
+`{{ availability_message }}` variable for your message text. Verified
+against HA's real blueprint-loading code path (schema validation + input
+substitution), not just eyeballed.
 
 ## License
 
