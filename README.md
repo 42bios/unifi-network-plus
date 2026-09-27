@@ -379,7 +379,7 @@ dashboard, then adjust the field-name candidates in `parsing.py`.
 ### HACS (custom repository)
 
 1. HACS → Integrations → ⋮ → Custom repositories.
-2. Repository URL: `https://github.com/manuel-mahr/unifi-network-plus`, category `Integration`.
+2. Repository URL: `https://github.com/42bios/unifi-network-plus`, category `Integration`.
 3. Install "UniFi Network+" and restart Home Assistant.
 4. Settings → Devices & Services → Add Integration → "UniFi Network+".
 

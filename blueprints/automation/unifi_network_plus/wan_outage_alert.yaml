@@ -6,7 +6,7 @@ blueprint:
     period - a good proxy for "the internet connection is having problems"
     that doesn't need Home Assistant's own connectivity to be affected.
   domain: automation
-  source_url: https://github.com/manuel-mahr/unifi-network-plus/blob/main/blueprints/automation/unifi_network_plus/wan_outage_alert.yaml
+  source_url: https://github.com/42bios/unifi-network-plus/blob/main/blueprints/automation/unifi_network_plus/wan_outage_alert.yaml
   input:
     wan_availability_entity:
       name: WAN Availability sensor

@@ -5,9 +5,9 @@
     "@manuel"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/manuel-mahr/unifi-network-plus",
+  "documentation": "https://github.com/42bios/unifi-network-plus",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/manuel-mahr/unifi-network-plus/issues",
+  "issue_tracker": "https://github.com/42bios/unifi-network-plus/issues",
   "requirements": [],
   "version": "0.1.0"
 }

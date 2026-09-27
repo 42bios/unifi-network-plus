@@ -244,6 +244,22 @@ def test_parse_wan_health_extracts_isp_latency_and_live_rate() -> None:
     assert result.wan2_availability_percent == 0.0
 
 
+def test_parse_wan_health_availability_rounded_to_two_decimals() -> None:
+    # Confirmed live: the controller sends this as a long, un-rounded
+    # float (e.g. 99.930600002408), not a clean percentage - regression
+    # test for exactly that reported value.
+    fixture = {
+        "subsystem": "wan",
+        "uptime_stats": {
+            "WAN": {"availability": 99.930600002408},
+            "WAN2": {"availability": 87.123456789},
+        },
+    }
+    result = parse_wan_health([fixture])
+    assert result.availability_percent == 99.93
+    assert result.wan2_availability_percent == 87.12
+
+
 def test_parse_wan_health_no_wan_subsystem_returns_empty() -> None:
     result = parse_wan_health([{"subsystem": "wlan", "status": "ok"}])
     assert result.isp_name is None

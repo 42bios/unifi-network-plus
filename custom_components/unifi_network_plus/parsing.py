@@ -565,14 +565,18 @@ def parse_wan_health(health_entries: list[dict[str, Any]]) -> WanHealth:
 
     rx_rate = _num(wan.get("rx_bytes-r"))
     tx_rate = _num(wan.get("tx_bytes-r"))
+    availability = _num(wan_monitor.get("availability")) if wan_monitor else None
+    wan2_availability = _num(wan2_monitor.get("availability")) if wan2_monitor else None
 
     return WanHealth(
         isp_name=wan.get("isp_name"),
-        availability_percent=_num(wan_monitor.get("availability")) if wan_monitor else None,
+        # Confirmed live: the controller sends this as a long, un-rounded
+        # float (e.g. 99.930600002408) rather than a clean percentage.
+        availability_percent=round(availability, 2) if availability is not None else None,
         latency_ms=_num(wan_monitor.get("latency_average")) if wan_monitor else None,
         rx_rate_mbps=round(rx_rate * 8 / 1_000_000, 2) if rx_rate is not None else None,
         tx_rate_mbps=round(tx_rate * 8 / 1_000_000, 2) if tx_rate is not None else None,
-        wan2_availability_percent=_num(wan2_monitor.get("availability")) if wan2_monitor else None,
+        wan2_availability_percent=round(wan2_availability, 2) if wan2_availability is not None else None,
     )
 
 
