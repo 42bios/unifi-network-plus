@@ -1,0 +1,52 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: please attach a **redacted diagnostics download**
+        (Settings → Devices & Services → UniFi Network+ → three-dot menu →
+        "Download diagnostics"). It contains no host/credentials/MACs/IPs -
+        see the README's "Setup" section for details.
+  - type: input
+    id: controller
+    attributes:
+      label: Controller model / firmware
+      description: e.g. UDM Pro, UniFi OS 4.x / Network application version
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+    validations:
+      required: true
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs (Settings → System → Logs, filtered to `unifi_network_plus`)
+      render: shell
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics file
+      description: Drag and drop the downloaded diagnostics JSON here.

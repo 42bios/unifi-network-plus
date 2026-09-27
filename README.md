@@ -37,6 +37,25 @@ needed.
 was verified" below for exactly what that covered and what's still
 best-effort on other controller models/versions.
 
+## Contents
+
+- [Why this exists](#why-this-exists)
+- [Feature comparison vs. core `unifi`](#feature-comparison-vs-core-unifi)
+- [How it works](#how-it-works)
+- [Real bugs found (and fixed) against a live controller](#real-bugs-found-and-fixed-against-a-live-controller)
+- [Sensors](#sensors)
+- [Polling frequency - is this "live"?](#polling-frequency---is-this-live)
+- [Auto-discovery of new devices](#auto-discovery-of-new-devices)
+- [What was verified vs. what still needs checking on your controller](#what-was-verified-vs-what-still-needs-checking-on-your-controller)
+- [Installation](#installation)
+- [Setup](#setup)
+- [Repository layout](#repository-layout)
+- [Development / running tests](#development-running-tests)
+- [Roadmap toward feature parity](#roadmap-toward-feature-parity)
+- [On UniFi's official REST API (developer.ui.com)](#on-unifis-official-rest-api-developeruicom)
+- [Bundled automation blueprints](#bundled-automation-blueprints)
+- [License](#license)
+
 ## Why this exists
 
 The core `unifi` integration is great for device presence and basic
@@ -431,6 +450,13 @@ Config flow fields:
 | Verify SSL certificate | off by default (most controllers use a self-signed cert); enable if you have a trusted cert |
 | Scan interval | seconds, default 60 |
 | Number of top clients | how many entries to include in the Top Clients attribute list, default 5 |
+
+**Troubleshooting:** Settings → Devices & Services → UniFi Network+ → the
+three-dot menu on the integration card → "Download diagnostics" gives a
+JSON snapshot of the last poll (config, site role, every parsed
+sensor/device/client value) to attach to a bug report. Host, username,
+password, MAC addresses, IPs, hostnames and SSIDs are all redacted before
+the file is generated - nothing identifying leaves your machine.
 
 ## Repository layout
 
