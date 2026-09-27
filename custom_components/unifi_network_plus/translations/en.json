@@ -179,6 +179,9 @@
       },
       "restart_device": {
         "name": "Restart"
+      },
+      "power_cycle_port": {
+        "name": "{port} Power Cycle"
       }
     }
   }

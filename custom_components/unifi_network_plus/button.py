@@ -21,12 +21,13 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up per-client Reconnect and per-device Restart buttons,
-    discovered dynamically."""
+    """Set up per-client Reconnect, per-device Restart and per-PoE-port
+    Power Cycle buttons, discovered dynamically."""
     coordinator: UniFiNetworkPlusCoordinator = hass.data[DOMAIN][entry.entry_id][RUNTIME_COORDINATOR]
 
     known_client_macs: set[str] = set()
     known_device_macs: set[str] = set()
+    known_poe_port_keys: set[tuple[str, int]] = set()
 
     def _discover_new_entities() -> None:
         if not coordinator.data:
@@ -40,6 +41,11 @@ async def async_setup_entry(
             if device.mac not in known_device_macs:
                 known_device_macs.add(device.mac)
                 new_entities.append(RestartDeviceButton(entry, coordinator, device.mac))
+            for port in device.ports:
+                key = (device.mac, port.port_idx)
+                if port.poe_mode is not None and key not in known_poe_port_keys:
+                    known_poe_port_keys.add(key)
+                    new_entities.append(PowerCyclePortButton(entry, coordinator, device.mac, port.port_idx))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -141,3 +147,74 @@ class RestartDeviceButton(CoordinatorEntity[UniFiNetworkPlusCoordinator], Button
 
     async def async_press(self) -> None:
         await self.coordinator.client.restart_device(self._device_mac)
+
+
+class PowerCyclePortButton(CoordinatorEntity[UniFiNetworkPlusCoordinator], ButtonEntity):
+    """Momentarily power-cycle one PoE port (off then back on).
+
+    Distinct from switch.py's PoePortSwitch, which sets a persistent
+    on/off mode - this is a one-shot nudge for a stuck PoE device
+    (camera, AP) without leaving it powered off. Disabled by default,
+    same reasoning as Restart/Reconnect above.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "power_cycle_port"
+    _attr_icon = "mdi:power-cycle"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._device_mac = device_mac
+        self._port_idx = port_idx
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_port{port_idx}_power_cycle"
+        port = self._find_port()
+        self._attr_translation_placeholders = {"port": port.name if port else f"Port {port_idx}"}
+
+    def _find_device(self):
+        if not self.coordinator.data:
+            return None
+        for device in self.coordinator.data.devices:
+            if device.mac == self._device_mac:
+                return device
+        return None
+
+    def _find_port(self):
+        device = self._find_device()
+        if not device:
+            return None
+        for port in device.ports:
+            if port.port_idx == self._port_idx:
+                return port
+        return None
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        device = self._find_device()
+        return {
+            "identifiers": {(DOMAIN, f"{self._entry.entry_id}_{self._device_mac}")},
+            "name": device.name if device else self._device_mac,
+            "manufacturer": MANUFACTURER,
+            "model": (device.model if device else None) or "UniFi Device",
+            "via_device": (DOMAIN, self._entry.entry_id),
+        }
+
+    @property
+    def _has_control_permission(self) -> bool:
+        role = self.coordinator.client.site_role
+        return role is None or role == "admin"
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._find_port() is not None and self._has_control_permission
+
+    async def async_press(self) -> None:
+        await self.coordinator.client.power_cycle_port(self._device_mac, self._port_idx)

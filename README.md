@@ -7,7 +7,7 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**946 entities** as of the latest release (vs. the core `unifi`
+**1001 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment - mostly per-client/per-port
 entities, most disabled by default so a fresh install stays uncluttered):
 
@@ -93,7 +93,7 @@ listed honestly, not omitted).
 | Device LED persistent on/off | ✅ (on/off only) | ✅, as a `light` entity with brightness/color |
 | Restart device | ✅ (soft only) | ✅ (soft only) |
 | PoE port on/off (persistent) | ✅ | ✅ |
-| PoE port power-cycle (momentary) | ❌ | ✅ |
+| PoE port power-cycle (momentary) | ✅ | ✅ |
 | Port link enable/disable | ✅ | ✅ |
 | Block/unblock client | ✅ | ✅ |
 | Reconnect (kick) client | ✅ | ❌ |
@@ -244,6 +244,7 @@ State is `home`/`not_home`, with `is_wired`, `is_guest`, `is_blocked`, `last_see
 | Block Client (`switch`, per client, **disabled by default**) | Blocks/unblocks a client from the network entirely - the classic parental-control/access-control action. |
 | Reconnect Client (`button`, per client, **disabled by default**) | Forces a connected client to disconnect and immediately re-associate - not a block, just a nudge for a client stuck on a bad AP/band. |
 | Restart (`button`, per device, **disabled by default**) | Soft-restarts a device. Real, disruptive action - the device and everything connected through it briefly goes offline. |
+| Power Cycle (`button`, per PoE port, **disabled by default**) | Momentarily cuts and restores PoE power to one port - a nudge for a stuck PoE device without leaving it off, unlike the PoE switch above. |
 
 All of the above go **unavailable** (not just fail on use) when Account
 Permission reports anything other than `admin`.
@@ -391,10 +392,10 @@ path and client presence were the real remaining gap, and both are done.
 **Done:** all stats/diagnostics from the intro; client presence
 (`device_tracker`, one per client ever seen, from `rest/user` +
 `stat/sta`); Block/Reconnect Client; Locate, LED, PoE port, Port Enabled
-switches and a Restart button, all gated on an **Account Permission**
-sensor (site-role check, same mechanism core's `hub.is_admin` uses) so
-they go unavailable up front rather than failing on first use. Verified
-live: Locate actually toggled a real gateway's LED on then off.
+switches, Restart and PoE Power Cycle buttons, all gated on an **Account
+Permission** sensor (site-role check, same mechanism core's `hub.is_admin`
+uses) so they go unavailable up front rather than failing on first use.
+Verified live: Locate actually toggled a real gateway's LED on then off.
 
 **Not done, deliberately:**
 
@@ -402,7 +403,6 @@ live: Locate actually toggled a real gateway's LED on then off.
 |---|---|
 | Firmware `update.async_install` | Mechanism is confirmed (`cmd/devmgr` upgrade), but a remote firmware flash is the highest-risk write this integration could do - needs its own explicit sign-off. |
 | WiFi SSID enable/disable | Drops every client on that network at once (unlike one PoE port); would also need UniFi's API-key REST API, not the legacy endpoints used elsewhere. |
-| PoE power-cycle (momentary) | Persistent on/off exists; the momentary variant hasn't been added. |
 | WAN Packet Loss | No matching field found in the tested controller's responses at all - `parsing.py` has a candidate list ready if one turns up on another firmware version. |
 | Validate on a classic (non-UniFi-OS) controller / other firmware versions | Only unit-tested against mocked responses so far, not a real classic controller. |
 | Firewall/DPI/traffic policy, smart plug control | Out of scope so far - a materially larger surface than device/client control. |

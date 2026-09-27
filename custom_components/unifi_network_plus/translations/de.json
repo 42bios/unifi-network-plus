@@ -179,6 +179,9 @@
       },
       "restart_device": {
         "name": "Neustart"
+      },
+      "power_cycle_port": {
+        "name": "{port} Stromzyklus"
       }
     }
   }

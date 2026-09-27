@@ -669,3 +669,29 @@ async def test_restart_device_sends_soft_restart_command(api_module) -> None:
             "mac": "aa:bb:cc:dd:ee:ff",
             "reboot_type": "soft",
         }
+
+
+async def test_power_cycle_port_sends_power_cycle_command(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.post(
+                "https://udm.local:443/proxy/network/api/s/default/cmd/devmgr",
+                status=200,
+                payload={"data": []},
+            )
+            await client.power_cycle_port("aa:bb:cc:dd:ee:ff", 3)
+
+        calls = _calls_for(mocked, "POST", "/cmd/devmgr")
+        assert calls[0].kwargs["json"] == {
+            "cmd": "power-cycle",
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "port_idx": 3,
+        }

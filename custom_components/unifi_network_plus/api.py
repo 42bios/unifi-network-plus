@@ -460,6 +460,20 @@ class UniFiClient:
             json_body={"led_override": status},
         )
 
+    async def power_cycle_port(self, switch_mac: str, port_idx: int) -> None:
+        """Momentarily power-cycle one PoE port (off then back on).
+
+        Distinct from ``set_port_poe_mode`` above, which sets a persistent
+        on/off/24v/passthrough mode - this is a one-shot nudge for a PoE
+        device (camera, AP) that's stuck, matching aiounifi's
+        ``DevicePowerCyclePortRequest``.
+        """
+        await self._request(
+            "POST",
+            "cmd/devmgr",
+            json_body={"cmd": "power-cycle", "mac": switch_mac, "port_idx": port_idx},
+        )
+
     async def restart_device(self, mac: str) -> None:
         """Soft-restart a device (AP/switch/gateway).
 
