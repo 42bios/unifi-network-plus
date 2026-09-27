@@ -17,6 +17,7 @@ from .parsing import (
     MonthlyUsage,
     NetworkHealth,
     TopClient,
+    TrackedClient,
     WanHealth,
     WanThroughput,
     parse_devices,
@@ -24,6 +25,7 @@ from .parsing import (
     parse_monthly_usage,
     parse_network_health,
     parse_top_clients,
+    parse_tracked_clients,
     parse_wan_health,
     parse_wan_throughput,
 )
@@ -43,6 +45,7 @@ class UniFiSnapshot:
     devices: list[DeviceInfo]
     health: list[HealthSubsystem]
     client_count: int
+    tracked_clients: list[TrackedClient]
 
 
 class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
@@ -108,6 +111,9 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         daily_samples = await self._fetch_optional(
             "stat/report/daily.gw (monthly usage)", self.client.get_wan_report_daily()
         )
+        all_known_clients = await self._fetch_optional(
+            "rest/user (known clients, for presence tracking)", self.client.get_all_known_clients()
+        )
 
         month_start = datetime.now(timezone.utc).replace(
             day=1, hour=0, minute=0, second=0, microsecond=0
@@ -134,6 +140,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
             devices=_resolve_port_connection_names(parse_devices(devices), clients, devices),
             health=parse_health(health),
             client_count=len(clients),
+            tracked_clients=parse_tracked_clients(all_known_clients, clients),
         )
 
 

@@ -626,3 +626,69 @@ def parse_network_health(health_entries: list[dict[str, Any]]) -> NetworkHealth:
         speedtest_last_run=_int_or_none(www.get("speedtest_lastrun")) if www else None,
         wan_drops=_int_or_none(www.get("drops")) if www else None,
     )
+
+
+@dataclass(frozen=True)
+class TrackedClient:
+    """One known client for presence tracking (``device_tracker``).
+
+    Built from ``rest/user`` (every client the controller has ever seen,
+    confirmed live: 90 entries vs. a handful currently connected) merged
+    with ``stat/sta`` (who's online *right now*) - ``rest/user`` alone has
+    no "currently connected" flag, and ``stat/sta`` alone simply omits a
+    client once it disconnects rather than reporting it offline, so
+    neither endpoint alone is enough for a "not_home" state.
+    """
+
+    mac: str
+    name: str
+    is_online: bool
+    is_wired: bool
+    is_guest: bool
+    is_blocked: bool
+    ip: str | None
+    last_seen: int | None
+    network_name: str | None
+    essid: str | None
+    manufacturer: str | None
+
+
+def parse_tracked_clients(
+    all_known_clients: list[dict[str, Any]],
+    online_clients: list[dict[str, Any]],
+) -> list[TrackedClient]:
+    """Merge the full known-client roster with the currently-connected list."""
+    online_by_mac = {c["mac"]: c for c in online_clients if c.get("mac")}
+    result: list[TrackedClient] = []
+    for entry in all_known_clients:
+        mac = entry.get("mac")
+        if not mac:
+            continue
+        online_entry = online_by_mac.get(mac)
+        is_online = online_entry is not None
+        # Prefer the live stat/sta entry's ip/network for an online client
+        # (more current than rest/user's "last" fields), fall back to
+        # rest/user's last-known values for an offline one.
+        source = online_entry if online_entry else entry
+        name = str(
+            entry.get("name")
+            or entry.get("hostname")
+            or entry.get("device_name")
+            or mac
+        )
+        result.append(
+            TrackedClient(
+                mac=mac,
+                name=name,
+                is_online=is_online,
+                is_wired=bool(source.get("is_wired", False)),
+                is_guest=bool(entry.get("is_guest", False)),
+                is_blocked=bool(entry.get("blocked", False)),
+                ip=source.get("ip") or source.get("last_ip"),
+                last_seen=_int_or_none(entry.get("last_seen")),
+                network_name=source.get("network") or source.get("last_connection_network_name"),
+                essid=online_entry.get("essid") if online_entry and not source.get("is_wired") else None,
+                manufacturer=entry.get("oui") or None,
+            )
+        )
+    return result

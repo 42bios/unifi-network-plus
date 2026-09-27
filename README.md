@@ -7,26 +7,30 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**477 entities** as of the latest release (vs. the core `unifi`
-integration's 281 in the same environment - mostly the per-port
-entities below, which are disabled by default and don't clutter a fresh
-install): WAN throughput, latency, ISP/availability, the controller's own
-periodic ISP speed test, top clients by traffic (including VLAN/network,
-signal, CCQ, SSID and channel), network-wide AP/switch/guest/IoT counts;
-per physical device (AP/switch/gateway, each its own Home Assistant
-device) CPU/memory/client-count/satisfaction/anomalies/overheating,
-gateway temperature/storage, switch PoE draw/active-port-count and one
-Firmware update entity; per-port link speed (with connection type:
-copper/fibre/DAC and, when present, which network it carries) PoE power
-and live download/upload throughput on **both switches and gateways**
-(disabled by default - enable individual ports from Settings -> Entities
-if you want them); a real-time-connection diagnostic sensor backed by the
-controller's WebSocket event stream, used to trigger faster refreshes on
-top of the normal poll interval (see "Polling frequency" below); and
-`switch` entities to locate (blink) a device or control per-port PoE
-power (write operations - see the permissions note in Setup). New
-devices (a newly adopted AP or switch) are picked up automatically on the
-next poll, no restart needed.
+**886 entities** as of the latest release (vs. the core `unifi`
+integration's 281 in the same environment - mostly per-client and
+per-port entities, most of which are disabled by default and don't
+clutter a fresh install): WAN throughput, latency, ISP/availability, the
+controller's own periodic ISP speed test, top clients by traffic
+(including VLAN/network, signal, CCQ, SSID and channel), network-wide
+AP/switch/guest/IoT counts; per physical device (AP/switch/gateway, each
+its own Home Assistant device) CPU/memory/client-count/satisfaction/
+anomalies/overheating, gateway temperature/storage, switch PoE
+draw/active-port-count and one Firmware update entity; per-port link
+speed (with connection type: copper/fibre/DAC and, when present, which
+network it carries) PoE power and live download/upload throughput on
+**both switches and gateways** (disabled by default - enable individual
+ports from Settings -> Entities if you want them); a real-time-connection
+and an account-permission diagnostic sensor, the latter backed by an
+internal site-role check that also gates the control entities below;
+`switch` entities to locate (blink) a device, control per-port PoE
+power, or block a client from the network, and a button to force a
+client to reconnect (all write operations - see the permissions note in
+Setup); and a `device_tracker` entity per client the controller has ever
+seen, for real presence tracking (`home`/`not_home`), built from the
+full known-client roster rather than just who's currently connected. New
+devices/clients are picked up automatically on the next poll, no restart
+needed.
 
 **Verified against a live UDM-family (UniFi OS) controller** - see "What
 was verified" below for exactly what that covered and what's still
@@ -91,10 +95,11 @@ each sensor actually reads.
 
 This integration was originally built with no access to a real UniFi
 controller. Once one became available, several bugs surfaced immediately -
-recorded here because they're the kind of thing that's easy to reintroduce
-and each one is covered by a regression test (except #4, a Home Assistant
-threading rule rather than something `pytest` without a real HA instance
-can catch):
+recorded here because they're the kind of thing that's easy to reintroduce.
+#1-3 are covered by a regression test; #4-6 are Home Assistant framework
+behaviors (threading rules, entity-base-class property overrides) that
+only show up against a real running HA instance, not something `pytest`
+without one can catch:
 
 1. **aiohttp silently drops cookies for bare-IP hosts.** UniFi controllers
    are almost always reached by LAN IP (`192.168.x.x`), not a hostname.
@@ -130,8 +135,25 @@ can catch):
    callback with `@homeassistant.core.callback`, which tells Home Assistant
    it's safe to run directly on the event loop. Confirmed clean against
    live HA logs (`binary_sensor.py`'s `_refresh`).
+5. **`ScannerEntity.entity_registry_enabled_default` is a `@property`,
+   not backed by `_attr_entity_registry_enabled_default`.** Every
+   `device_tracker` entity came up disabled by default despite setting
+   that `_attr_*` class variable - `ScannerEntity` itself defines
+   `entity_registry_enabled_default` as a computed property (disabled
+   unless some *other* integration already claims the MAC), which fully
+   shadows the `_attr_*` shortcut every other entity base class in this
+   codebase honors. Fixed by overriding the property itself in
+   `device_tracker.py::UniFiClientTracker`.
+6. **`_attr_has_entity_name = True` on a device-less entity produced a
+   duplicated friendly name** (`"Example UPS Device  Example UPS Device"`).
+   `ScannerEntity.device_info` is forced to `None` (device_tracker
+   entities deliberately don't get their own device registry entry), but
+   `has_entity_name` still tries to compose a device name with the
+   entity's own name in that case rather than falling back to just the
+   entity name - removing `_attr_has_entity_name` entirely (there's no
+   device to compose with anyway) fixed it.
 
-A fifth thing turned out to be a wrong assumption rather than a bug: report
+A seventh thing turned out to be a wrong assumption rather than a bug: report
 samples' `wan-rx_bytes` / `wan-tx_bytes` are **per-bucket totals** (bytes
 transferred during that one 5-minute/daily window), not a running lifetime
 counter - so Mbps is `bytes * 8 / bucket_seconds`, not a delta between two
@@ -203,18 +225,27 @@ sensors on the switch device itself cover the common case. Enable
 individual ports from Settings -> Devices & Services -> Entities if you
 want to graph one specific port.
 
+### Client presence (`device_tracker`, one per client the controller has ever seen via `rest/user`)
+
+State is `home`/`not_home`, with `is_wired`, `is_guest`, `is_blocked`, `last_seen`, `network`, `essid` and `manufacturer` as attributes. Enabled by default - this is the whole point of the feature, unlike the per-port entities.
+
 ### Diagnostic
 
 | Entity | Source |
 |---|---|
 | Realtime Connection (`binary_sensor`) | Whether the WebSocket event stream (see [Polling frequency](#polling-frequency---is-this-live)) is currently connected. Purely informational - the integration works identically either way, just faster when this is `on`. |
+| Account Permission | The configured account's site role (`admin`/`readonly`/...), from `GET self/sites` - the same check core `unifi` uses for `hub.is_admin`. Lets you see at a glance whether the Control entities below can actually work, without reading logs. |
 
-### Control (`switch`, write operations - see permissions note above)
+### Control (write operations - see permissions note above)
 
 | Entity | What it does |
 |---|---|
-| Locate | Starts/stops a device's locate (blink LED) mode. Purely cosmetic, fully reversible, enabled by default. |
-| Port PoE (per switch port, **disabled by default**) | Turns PoE power on ("auto") or off for one port. This can disconnect whatever is plugged into that port (an AP, camera, ...) - only enable it for a specific port you've deliberately chosen to control. |
+| Locate (`switch`) | Starts/stops a device's locate (blink LED) mode. Purely cosmetic, fully reversible, enabled by default. |
+| Port PoE (`switch`, per switch port, **disabled by default**) | Turns PoE power on ("auto") or off for one port. This can disconnect whatever is plugged into that port (an AP, camera, ...) - only enable it for a specific port you've deliberately chosen to control. |
+| Block Client (`switch`, per client, **disabled by default**) | Blocks/unblocks a client from the network entirely - the classic parental-control/access-control action. |
+| Reconnect Client (`button`, per client, **disabled by default**) | Forces a connected client to disconnect and immediately re-associate - not a block, just a nudge for a client stuck on a bad AP/band. |
+
+All four go **unavailable** (rather than failing only when used) when the Account Permission sensor above reports anything other than `admin`.
 
 The Firmware update entity is **read-only**: it reports whether an update
 is available (`installed_version`/`latest_version`), but does not
@@ -272,8 +303,12 @@ This was tested end-to-end (real login, all endpoints, all sensors except
 WAN Packet Loss populated with live data, including every per-device metric
 across one `uap`, one `usw` and the `uxg` gateway) against one UniFi OS
 console (UDM-family, controller version 5.1.26, single site, 5 APs, 4
-switches). That covers the auth flow, CSRF handling, and every endpoint's
-*shape* well. What it does not cover:
+switches, 90 known clients). That covers the auth flow, CSRF handling, and
+every endpoint's *shape* well. The write/control path was verified fully
+live too, with a "Full Management" account: Locate actually toggled a real
+gateway's LED state on then off (confirmed via the controller's own
+reported state, not just an absence of errors), and the site-role check
+correctly read back `"admin"`. What it does not cover:
 
 - Classic (non-UniFi-OS) controllers / Cloud Key Gen1 - the classic
   `/api/login` + `/api/s/<site>/...` code path is implemented and unit
@@ -392,28 +427,29 @@ skipping that step once already cost a debugging session):
    default), per-client VLAN/CCQ/SSID/channel, per-device firmware `update`
    entities, dynamic device grouping, auto-discovery of new devices,
    WebSocket-triggered real-time refresh with polling fallback.
-2. **Client presence tracking** (`device_tracker` platform) - the single
-   biggest remaining gap (~72 entities in the core integration for this
-   environment). Deliberately *not* done as part of the sensor/update push
-   above: core `unifi`'s client-tracking has years of refined edge-case
-   handling (MAC randomization, `consider_home` timeout tuning, guest vs.
-   authorized clients, wired vs. wireless reconnect behavior) that's easy
-   to get subtly wrong in a first pass. Needs its own focused session
-   rather than being bolted onto an unrelated change.
+2. **Done**: client presence tracking (`device_tracker` platform), one
+   entity per client the controller has ever seen. Built from `rest/user`
+   (the full known-client roster, confirmed live: 90 entries vs. a
+   handful currently connected) cross-referenced with `stat/sta` (who's
+   online *right now*) - neither endpoint alone can tell "known but
+   currently away" from "never seen", which is exactly the gap that made
+   this its own phase rather than a quick add. Also added alongside it,
+   since they operate on the same per-client roster: a **Block Client**
+   `switch` (parental-control/access-control, disabled by default) and a
+   **Reconnect Client** `button` (force a re-associate, disabled by
+   default) - both cross-checked against aiounifi's
+   `ClientBlockRequest`/`ClientReconnectRequest`.
 3. **Done**: `switch` entities for device Locate (blink LED) and per-port
    PoE on/off, added with explicit user sign-off on the risk/blast-radius
    trade-off (write operations, unlike everything before this). Verified
-   live: request shapes cross-checked against `aiounifi`'s own
-   `DeviceLocateRequest`/`DeviceSetPoePortModeRequest` (already installed
-   alongside Home Assistant), and a real attempt against the test
-   controller's "View Only" account correctly came back HTTP 403 -
-   confirming both entities need a "Full Management" local account
-   (see Setup) and that this integration surfaces that as a clear error
-   rather than a silent no-op. Not yet verified: an actual successful
-   toggle against a "Full Management" account (the test account here is
-   intentionally "View Only" - a live 403 is a good sign the request
-   reaches the controller and is authenticated, but the write path itself
-   awaits a controller with the right permissions to confirm end-to-end).
+   **fully live end-to-end** against a "Full Management" account: Locate
+   toggled on then off on a real gateway and was confirmed via the
+   controller's own state, not just an absence of errors. A new
+   **Account Permission** diagnostic sensor and an internal site-role
+   check (`GET self/sites`, the same mechanism core `unifi` uses for
+   `hub.is_admin`) now mark these control entities unavailable up front
+   when the configured account isn't "Full Management", rather than only
+   failing on the first write attempt.
 4. Validate against a classic (non-UniFi-OS) controller and a second UniFi
    OS firmware version/model to firm up the "what still needs checking"
    list above - the further this grows, the more that matters.

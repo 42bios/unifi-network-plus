@@ -484,3 +484,94 @@ async def test_get_site_role_request_failure_returns_none_not_raises(api_module)
             role = await client.get_site_role()
 
         assert role is None
+
+
+@pytest.mark.asyncio
+async def test_get_all_known_clients_hits_rest_user(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.get(
+                "https://udm.local:443/proxy/network/api/s/default/rest/user",
+                status=200,
+                payload={"data": [{"mac": "aa:bb", "name": "Laptop"}]},
+            )
+            result = await client.get_all_known_clients()
+
+        assert result == [{"mac": "aa:bb", "name": "Laptop"}]
+
+
+@pytest.mark.asyncio
+async def test_set_client_blocked_sends_block_command(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.post(
+                "https://udm.local:443/proxy/network/api/s/default/cmd/stamgr",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_client_blocked("aa:bb:cc:dd:ee:ff", True)
+
+        calls = _calls_for(mocked, "POST", "/cmd/stamgr")
+        assert calls[0].kwargs["json"] == {"cmd": "block-sta", "mac": "aa:bb:cc:dd:ee:ff"}
+
+
+@pytest.mark.asyncio
+async def test_set_client_blocked_false_sends_unblock_command(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.post(
+                "https://udm.local:443/proxy/network/api/s/default/cmd/stamgr",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_client_blocked("aa:bb:cc:dd:ee:ff", False)
+
+        calls = _calls_for(mocked, "POST", "/cmd/stamgr")
+        assert calls[0].kwargs["json"] == {"cmd": "unblock-sta", "mac": "aa:bb:cc:dd:ee:ff"}
+
+
+@pytest.mark.asyncio
+async def test_reconnect_client_sends_kick_command(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.post(
+                "https://udm.local:443/proxy/network/api/s/default/cmd/stamgr",
+                status=200,
+                payload={"data": []},
+            )
+            await client.reconnect_client("aa:bb:cc:dd:ee:ff")
+
+        calls = _calls_for(mocked, "POST", "/cmd/stamgr")
+        assert calls[0].kwargs["json"] == {"cmd": "kick-sta", "mac": "aa:bb:cc:dd:ee:ff"}

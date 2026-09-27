@@ -11,6 +11,11 @@ deliberately small in scope:
   (an AP, a camera, ...) - disabled by default like the other per-port
   entities, and the request shape was cross-checked against aiounifi's
   ``DeviceSetPoePortModeRequest`` (see api.py) rather than guessed.
+- ``BlockClientSwitch``: blocks/unblocks a client from the network
+  entirely (the classic UniFi parental-control/access-control action).
+  Disabled by default, same reasoning as PoePortSwitch - this is a
+  deliberate per-client action, not something to have 90-odd of enabled
+  out of the box.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ async def async_setup_entry(
 
     known_device_macs: set[str] = set()
     known_port_keys: set[tuple[str, int]] = set()
+    known_client_macs: set[str] = set()
 
     def _discover_new_entities() -> None:
         if not coordinator.data:
@@ -60,6 +66,10 @@ async def async_setup_entry(
                 if key not in known_port_keys:
                     known_port_keys.add(key)
                     new_entities.append(PoePortSwitch(entry, coordinator, device.mac, port.port_idx))
+        for client in coordinator.data.tracked_clients:
+            if client.mac not in known_client_macs:
+                known_client_macs.add(client.mac)
+                new_entities.append(BlockClientSwitch(entry, coordinator, client.mac))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -187,4 +197,58 @@ class PoePortSwitch(_DeviceControlBase):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.coordinator.client.set_port_poe_mode(self._device_mac, self._port_idx, "off")
+        await self.coordinator.async_request_refresh()
+
+
+class BlockClientSwitch(CoordinatorEntity[UniFiNetworkPlusCoordinator], SwitchEntity):
+    """Block or unblock a client from the network entirely.
+
+    Unlike LocateSwitch/PoePortSwitch this isn't keyed to a physical UniFi
+    device, so it doesn't use _DeviceControlBase - a blocked client has no
+    device of its own in this integration (matching device_tracker.py,
+    which for the same reason doesn't create one either).
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "block_client"
+    _attr_icon = "mdi:account-cancel"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator, mac: str) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._mac = mac
+        self._attr_unique_id = f"{entry.entry_id}_{mac}_block"
+        client = self._find_client()
+        self._attr_translation_placeholders = {"client": client.name if client else mac}
+
+    def _find_client(self):
+        if not self.coordinator.data:
+            return None
+        for client in self.coordinator.data.tracked_clients:
+            if client.mac == self._mac:
+                return client
+        return None
+
+    @property
+    def is_on(self) -> bool | None:
+        client = self._find_client()
+        return client.is_blocked if client else None
+
+    @property
+    def _has_control_permission(self) -> bool:
+        role = self.coordinator.client.site_role
+        return role is None or role == "admin"
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._find_client() is not None and self._has_control_permission
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_client_blocked(self._mac, True)
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_client_blocked(self._mac, False)
         await self.coordinator.async_request_refresh()

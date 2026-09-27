@@ -19,6 +19,7 @@ from parsing import (  # noqa: E402
     parse_monthly_usage,
     parse_network_health,
     parse_top_clients,
+    parse_tracked_clients,
     parse_wan_health,
     parse_wan_throughput,
 )
@@ -621,3 +622,81 @@ def test_parse_devices_missing_optional_sections_does_not_crash() -> None:
     assert device.cpu_temp_celsius is None
     assert device.storage_percent is None
     assert device.poe_power_watts is None
+
+
+# Trimmed from real rest/user entries on a live UDM-family controller - not
+# a guess. One offline (no matching stat/sta entry), one online.
+_LIVE_REST_USER_OFFLINE_FIXTURE = {
+    "mac": "aa:bb:cc:dd:ee:13",
+    "hostname": "Notebook",
+    "is_wired": False,
+    "is_guest": False,
+    "blocked": False,
+    "last_ip": "192.168.1.22",
+    "last_seen": 1787861418,
+    "last_connection_network_name": "CLIENTS",
+    "oui": "Intel Corporate",
+}
+
+_LIVE_REST_USER_ONLINE_FIXTURE = {
+    "mac": "aa:bb:cc:dd:ee:14",
+    "name": "Example UPS Device ",
+    "hostname": "apc537FF3",
+    "is_wired": True,
+    "is_guest": False,
+    "blocked": False,
+    "last_ip": "192.168.1.21",
+    "last_seen": 1790344896,
+    "last_connection_network_name": "MGMT",
+    "oui": "American Power Conversion Corp",
+}
+
+
+def test_parse_tracked_clients_offline_has_no_stat_sta_entry() -> None:
+    result = parse_tracked_clients([_LIVE_REST_USER_OFFLINE_FIXTURE], online_clients=[])
+    assert len(result) == 1
+    client = result[0]
+    assert client.mac == "aa:bb:cc:dd:ee:13"
+    assert client.name == "Notebook"
+    assert client.is_online is False
+    assert client.is_wired is False
+    assert client.is_blocked is False
+    assert client.ip == "192.168.1.22"
+    assert client.last_seen == 1787861418
+    assert client.network_name == "CLIENTS"
+    assert client.manufacturer == "Intel Corporate"
+    # Not in stat/sta -> no live essid, even though wireless.
+    assert client.essid is None
+
+
+def test_parse_tracked_clients_online_matches_stat_sta_by_mac() -> None:
+    online_entry = {
+        "mac": "aa:bb:cc:dd:ee:14",
+        "is_wired": True,
+        "ip": "192.168.1.21",
+        "network": "MGMT",
+    }
+    result = parse_tracked_clients([_LIVE_REST_USER_ONLINE_FIXTURE], online_clients=[online_entry])
+    assert len(result) == 1
+    client = result[0]
+    assert client.is_online is True
+    assert client.name == "Example UPS Device "  # prefers rest/user's "name" over hostname
+    assert client.ip == "192.168.1.21"
+
+
+def test_parse_tracked_clients_wireless_online_gets_essid() -> None:
+    known = {**_LIVE_REST_USER_OFFLINE_FIXTURE}  # wireless, is_wired False
+    online_entry = {"mac": known["mac"], "is_wired": False, "essid": "MyHomeWiFi"}
+    result = parse_tracked_clients([known], online_clients=[online_entry])
+    assert result[0].essid == "MyHomeWiFi"
+
+
+def test_parse_tracked_clients_blocked_flag() -> None:
+    blocked = {**_LIVE_REST_USER_OFFLINE_FIXTURE, "blocked": True}
+    result = parse_tracked_clients([blocked], online_clients=[])
+    assert result[0].is_blocked is True
+
+
+def test_parse_tracked_clients_skips_entries_without_mac() -> None:
+    result = parse_tracked_clients([{"name": "no-mac-here"}], online_clients=[])
+    assert result == []

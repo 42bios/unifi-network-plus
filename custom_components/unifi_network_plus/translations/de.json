@@ -162,6 +162,14 @@
       },
       "port_poe_switch": {
         "name": "{port} PoE"
+      },
+      "block_client": {
+        "name": "{client} sperren"
+      }
+    },
+    "button": {
+      "reconnect_client": {
+        "name": "{client} neu verbinden"
       }
     }
   }

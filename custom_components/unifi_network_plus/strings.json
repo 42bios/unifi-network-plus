@@ -162,6 +162,14 @@
       },
       "port_poe_switch": {
         "name": "{port} PoE"
+      },
+      "block_client": {
+        "name": "Block {client}"
+      }
+    },
+    "button": {
+      "reconnect_client": {
+        "name": "Reconnect {client}"
       }
     }
   }

@@ -344,10 +344,33 @@ class UniFiClient:
 
     # ------------------------------------------------------------------
     # Write/control endpoints - request shapes cross-checked against
-    # aiounifi's DeviceLocateRequest/DeviceSetPoePortModeRequest (the same
-    # library Home Assistant's core "unifi" integration uses), which is
-    # already installed alongside Home Assistant - not guessed.
+    # aiounifi's DeviceLocateRequest/DeviceSetPoePortModeRequest/
+    # ClientBlockRequest/ClientReconnectRequest (the same library Home
+    # Assistant's core "unifi" integration uses), which is already
+    # installed alongside Home Assistant - not guessed.
     # ------------------------------------------------------------------
+
+    async def set_client_blocked(self, mac: str, blocked: bool) -> None:
+        """Block or unblock a client from the network entirely.
+
+        The classic UniFi "Block" action (parental controls / access
+        control) - the client can't reconnect at all while blocked,
+        distinct from ``reconnect_client`` below which only forces a
+        momentary disconnect/re-associate.
+        """
+        await self._request(
+            "POST",
+            "cmd/stamgr",
+            json_body={"cmd": "block-sta" if blocked else "unblock-sta", "mac": mac},
+        )
+
+    async def reconnect_client(self, mac: str) -> None:
+        """Force a connected client to disconnect and re-associate.
+
+        Not a block - the client is free to reconnect immediately after.
+        Useful to nudge a client that's stuck on a bad AP/band.
+        """
+        await self._request("POST", "cmd/stamgr", json_body={"cmd": "kick-sta", "mac": mac})
 
     async def set_locate(self, mac: str, enable: bool) -> None:
         """Start/stop a device's locate (blink LED) mode.
@@ -408,6 +431,19 @@ class UniFiClient:
     async def get_clients(self) -> list[dict[str, Any]]:
         """Return currently connected clients (``stat/sta``)."""
         return await self._get("stat/sta")
+
+    async def get_all_known_clients(self) -> list[dict[str, Any]]:
+        """Return every client the controller has ever seen (``rest/user``),
+        online or not - confirmed live (90 entries on the test controller,
+        vs. a handful currently connected via ``stat/sta``).
+
+        ``stat/sta`` alone can't support device_tracker's "not_home" state:
+        a client simply disappears from that list once it disconnects,
+        rather than reporting an offline status. Each entry here carries
+        ``mac``/``last_seen`` regardless of current connection state,
+        matching aiounifi's ``AllClientListRequest``.
+        """
+        return await self._get("rest/user")
 
     async def get_devices(self) -> list[dict[str, Any]]:
         """Return UniFi devices (APs/switches/gateways) with detail (``stat/device``)."""
