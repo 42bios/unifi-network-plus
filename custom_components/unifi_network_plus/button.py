@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import RUNTIME_COORDINATOR
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import UniFiNetworkPlusCoordinator
+from .device import controller_via_device_id
 
 
 async def async_setup_entry(
@@ -133,7 +134,7 @@ class RestartDeviceButton(CoordinatorEntity[UniFiNetworkPlusCoordinator], Button
             "name": device.name if device else self._device_mac,
             "manufacturer": MANUFACTURER,
             "model": (device.model if device else None) or "UniFi Device",
-            "via_device": (DOMAIN, self._entry.entry_id),
+            "via_device_id": controller_via_device_id(self.hass, self._entry.entry_id),
         }
 
     @property
@@ -204,7 +205,7 @@ class PowerCyclePortButton(CoordinatorEntity[UniFiNetworkPlusCoordinator], Butto
             "name": device.name if device else self._device_mac,
             "manufacturer": MANUFACTURER,
             "model": (device.model if device else None) or "UniFi Device",
-            "via_device": (DOMAIN, self._entry.entry_id),
+            "via_device_id": controller_via_device_id(self.hass, self._entry.entry_id),
         }
 
     @property

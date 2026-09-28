@@ -27,6 +27,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import RUNTIME_COORDINATOR
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import UniFiNetworkPlusCoordinator
+from .device import controller_via_device_id
 
 
 async def async_setup_entry(
@@ -584,15 +585,7 @@ class DeviceBaseSensor(UniFiBaseSensor):
             "name": device.name if device else self._device_mac,
             "manufacturer": MANUFACTURER,
             "model": (device.model if device else None) or "UniFi Device",
-            # HA logs a (non-fatal until 2027.8.0) deprecation warning for
-            # this key in favour of "via_device_id" - which needs the
-            # controller device's *registry id*, not something an entity
-            # can know ahead of a device_registry lookup keyed by these
-            # identifiers. Leaving the (domain, identifier) tuple form here
-            # until there's a documented pattern for entities to resolve
-            # that id themselves without an extra round trip on every
-            # device_info access.
-            "via_device": (DOMAIN, self._entry.entry_id),
+            "via_device_id": controller_via_device_id(self.hass, self._entry.entry_id),
         }
 
 
