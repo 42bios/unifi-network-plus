@@ -1,5 +1,11 @@
 # UniFi Network+
 
+[![CI](https://github.com/42bios/unifi-network-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/ci.yml)
+[![HACS Validate](https://github.com/42bios/unifi-network-plus/actions/workflows/hacs-validate.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hacs-validate.yml)
+[![Hassfest](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![GitHub release](https://img.shields.io/github/v/release/42bios/unifi-network-plus)](https://github.com/42bios/unifi-network-plus/releases)
+
 Home Assistant custom integration that talks **directly** to a local
 Ubiquiti UniFi Network Controller / UniFi OS console. Started as a
 companion to the core `unifi` integration (extra stats it doesn't expose);
