@@ -56,6 +56,7 @@ best-effort on other controller models/versions.
 - [Roadmap toward feature parity](#roadmap-toward-feature-parity)
 - [On UniFi's official REST API (developer.ui.com)](#on-unifis-official-rest-api-developeruicom)
 - [Bundled automation blueprints](#bundled-automation-blueprints)
+- [Disclaimer](#disclaimer)
 - [License](#license)
 
 ## Why this exists
@@ -449,6 +450,13 @@ whatever) plus a ready-made `{{ alert_message }}`/`{{ presence_message }}`/
 `{{ availability_message }}` variable for your message text. Verified
 against HA's real blueprint-loading code path (schema validation + input
 substitution), not just eyeballed.
+
+## Disclaimer
+
+This is an unofficial, community-maintained integration and is not
+affiliated with, endorsed by, or supported by Ubiquiti Inc. UniFi and
+related product names, logos, and brands are property of Ubiquiti Inc.
+and are used here for identification purposes only.
 
 ## License
 
