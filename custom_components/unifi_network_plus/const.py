@@ -35,5 +35,3 @@ ATTR_WAN_RX_BYTES = "wan-rx_bytes"
 ATTR_WAN_TX_BYTES = "wan-tx_bytes"
 ATTR_WAN_LATENCY_AVG = "wan-latency_avg"
 
-# Historical monthly-usage lookback window in days.
-MONTHLY_USAGE_LOOKBACK_DAYS = 31

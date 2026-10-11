@@ -7,6 +7,7 @@ involved.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -44,9 +45,9 @@ class WanThroughput:
 
 
 def parse_wan_throughput(
-    report_samples: list[dict[str, Any]], bucket_seconds: float = 300
+    report_samples: list[dict[str, Any]], bucket_seconds: float = 300, now_ms: float | None = None
 ) -> WanThroughput:
-    """Parse the latest sample from a stat/report/*.gw response.
+    """Parse the latest *complete* sample from a stat/report/*.gw response.
 
     Confirmed against a live UDM-family controller: each
     ``stat/report/5minutes.gw`` sample's ``wan-rx_bytes`` / ``wan-tx_bytes``
@@ -58,6 +59,13 @@ def parse_wan_throughput(
     ``bucket_seconds`` defaults to 300 (5-minute report); pass a different
     value when parsing the hourly/daily reports instead.
 
+    ``time`` is the bucket's *start* (confirmed live), and the newest bucket
+    is still filling: using it divides a partial byte count by the full
+    bucket length and understates the rate (about half on average - the
+    summed volume came out at roughly 50 % of the UniFi app's). So only a
+    bucket that has fully elapsed (``time + bucket_seconds <= now``) is
+    used; ``now_ms`` is injectable for tests.
+
     Latency/loss field names are less consistent across controller
     versions and were not present at all in the samples this was tested
     against (no WAN health-check/speedtest configured on that gateway) -
@@ -68,7 +76,11 @@ def parse_wan_throughput(
     if not report_samples:
         return WanThroughput(None, None, None, None, None)
 
-    latest = max(report_samples, key=lambda sample: _num(sample.get("time")) or 0)
+    now = now_ms if now_ms is not None else time.time() * 1000
+    bucket_ms = bucket_seconds * 1000
+    complete = [s for s in report_samples if (t := _num(s.get("time"))) is not None and t + bucket_ms <= now]
+    # Fall back to the newest sample if none has completed yet, so something shows.
+    latest = max(complete or report_samples, key=lambda sample: _num(sample.get("time")) or 0)
 
     rx_bytes = _num(latest.get("wan-rx_bytes"))
     tx_bytes = _num(latest.get("wan-tx_bytes"))

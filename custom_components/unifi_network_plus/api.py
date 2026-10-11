@@ -50,9 +50,7 @@ _REPORT_ATTRS = ["time", "wan-rx_bytes", "wan-tx_bytes", "wan-latency_avg"]
 # retention per granularity (5-minute samples aren't kept for a full year,
 # for instance), so these are deliberately short windows - we only ever
 # need the *latest* sample from the 5-minute/hourly reports, and the daily
-# report only needs to cover the current calendar month
-# (MONTHLY_USAGE_LOOKBACK_DAYS in coordinator.py already widens that window
-# on the parsing side; this just has to be at least that long).
+# report only needs to cover the current calendar month (so at least 31 days).
 _REPORT_LOOKBACK_HOURS = {"5minutes.gw": 3, "hourly.gw": 48, "daily.gw": 24 * 35}
 
 

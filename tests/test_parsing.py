@@ -51,17 +51,39 @@ def test_parse_wan_throughput_picks_latest_and_converts_units() -> None:
             "wan-latency_avg": 8.0,
         },
     ]
-    result = parse_wan_throughput(samples)
+    result = parse_wan_throughput(samples, now_ms=10_000_000)
     assert result.timestamp == 300_000
     assert result.download_mbps == 16.0
     assert result.upload_mbps == 2.0
     assert result.latency_ms == 8.0
 
 
+def test_parse_wan_throughput_skips_the_bucket_that_is_still_filling() -> None:
+    # ``time`` is the bucket START; the newest bucket is still in progress and
+    # would understate the rate (a partial byte count divided by the full
+    # 300 s). Regression for the sensor reading ~50 % too low.
+    samples = [
+        {"time": 0, "wan-rx_bytes": 600_000_000, "wan-tx_bytes": 75_000_000},  # complete: 16 / 2 Mbps
+        {"time": 300_000, "wan-rx_bytes": 5_000_000, "wan-tx_bytes": 1_000_000},  # still filling
+    ]
+    # now = 3 min into the second bucket -> only the first has fully elapsed
+    result = parse_wan_throughput(samples, now_ms=300_000 + 180_000)
+    assert result.timestamp == 0
+    assert result.download_mbps == 16.0
+    assert result.upload_mbps == 2.0
+
+
+def test_parse_wan_throughput_falls_back_when_no_bucket_is_complete() -> None:
+    samples = [{"time": 300_000, "wan-rx_bytes": 30_000_000, "wan-tx_bytes": 0}]
+    result = parse_wan_throughput(samples, now_ms=300_000 + 60_000)
+    assert result.timestamp == 300_000
+    assert result.download_mbps == 0.8
+
+
 def test_parse_wan_throughput_respects_bucket_seconds() -> None:
     # An hourly-report sample covers a 3600s bucket, not 300s.
     samples = [{"time": 0, "wan-rx_bytes": 3_600_000_000, "wan-tx_bytes": 0}]
-    result = parse_wan_throughput(samples, bucket_seconds=3600)
+    result = parse_wan_throughput(samples, bucket_seconds=3600, now_ms=10_000_000)
     # 3_600_000_000 * 8 / 1e6 / 3600 = 8 Mbps
     assert result.download_mbps == 8.0
 

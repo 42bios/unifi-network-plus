@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import UniFiApiError, UniFiAuthError, UniFiClient
-from .const import DEFAULT_TOP_CLIENTS, MONTHLY_USAGE_LOOKBACK_DAYS
+from .const import DEFAULT_TOP_CLIENTS
 from .parsing import (
     DeviceInfo,
     HealthSubsystem,
@@ -115,13 +116,12 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
             "rest/user (known clients, for presence tracking)", self.client.get_all_known_clients()
         )
 
-        month_start = datetime.now(timezone.utc).replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
-        )
-        # Guard against a controller clock far off from UTC by also
-        # looking back a fixed window, whichever is earlier.
-        lookback = datetime.now(timezone.utc) - timedelta(days=MONTHLY_USAGE_LOOKBACK_DAYS)
-        window_start = min(month_start, lookback)
+        # Calendar month to date in the local timezone (the daily buckets start
+        # at the controller's local midnight). 12 h of tolerance absorbs a
+        # controller/HA timezone mismatch without pulling in the previous
+        # month's last bucket (always a full 24 h earlier).
+        month_start = dt_util.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        window_start = month_start - timedelta(hours=12)
 
         wan = parse_wan_throughput(wan_samples)
         wan_health = parse_wan_health(health)
