@@ -51,6 +51,7 @@ best-effort on other controller models/versions.
 - [What was verified vs. what still needs checking on your controller](#what-was-verified-vs-what-still-needs-checking-on-your-controller)
 - [Installation](#installation)
 - [Setup](#setup)
+- [Preparing for a controller upgrade](#preparing-for-a-controller-upgrade)
 - [Repository layout](#repository-layout)
 - [Development / running tests](#development-running-tests)
 - [Roadmap toward feature parity](#roadmap-toward-feature-parity)
@@ -370,6 +371,17 @@ JSON snapshot of the last poll (config, site role, every parsed
 sensor/device/client value) to attach to a bug report. Host, username,
 password, MAC addresses, IPs, hostnames and SSIDs are all redacted before
 the file is generated - nothing identifying leaves your machine.
+
+## Preparing for a controller upgrade
+
+`tools/schema_snapshot.py` records the field paths and types (never values)
+of every endpoint this integration reads. Snapshot before an upgrade, again
+after, and diff - removed or retyped fields point at exactly what to fix:
+
+```bash
+UNIFI_HOST=... UNIFI_USER=... UNIFI_PASS=... python3 tools/schema_snapshot.py snapshot > before.json
+python3 tools/schema_snapshot.py diff before.json after.json
+```
 
 ## Repository layout
 
