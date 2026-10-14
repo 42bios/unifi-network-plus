@@ -13,7 +13,7 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
-**1001 entities** as of the latest release (vs. the core `unifi`
+**1087 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment - mostly per-client/per-port
 entities, most disabled by default so a fresh install stays uncluttered):
 
@@ -24,7 +24,8 @@ entities, most disabled by default so a fresh install stays uncluttered):
   client-count/satisfaction/anomalies/overheating, gateway temperature/
   storage, switch PoE draw/active-port-count, Firmware `update` entity.
 - **Per port** (disabled by default, both switches and gateways): link
-  speed/media type/network, PoE power, live down/upload.
+  speed/media type/network, PoE power, PoE standard (PoE/PoE+/PoE++),
+  live down/upload.
 - **Diagnostics**: realtime-connection and account-permission sensors,
   the latter gating every control entity below.
 - **Control** (write ops, see Setup for permissions): locate/LED/PoE/
@@ -224,6 +225,7 @@ Power there reads `None`).
 |---|---|
 | Link Speed | `stat/device` → `port_table[].speed`, with media type (`GE`/`SFP+`/...) and network (`wan`/`wan2`/`lan`) as attributes |
 | PoE Power | `stat/device` → `port_table[].poe_power` |
+| PoE Standard | `stat/device` → `port_table[].poe_class` (negotiated 802.3 class → PoE / PoE+ / PoE++, the standard the device *requires*; unavailable while nothing is powered); attributes: class, standards the port supports (`poe_caps` bitmask), voltage, current. PoE-capable ports only |
 | Download / Upload | `stat/device` → `port_table[].rx_bytes-r` / `tx_bytes-r`, live instantaneous rate |
 
 Disabled by default so a 48-port switch doesn't add 160+ entities most

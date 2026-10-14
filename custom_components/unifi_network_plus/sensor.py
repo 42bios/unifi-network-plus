@@ -99,6 +99,8 @@ async def async_setup_entry(
                     known_port_keys.add(key)
                     new_entities.append(PortLinkSpeedSensor(entry, coordinator, device.mac, port.port_idx))
                     new_entities.append(PortPoePowerSensor(entry, coordinator, device.mac, port.port_idx))
+                    if port.poe_mode is not None:
+                        new_entities.append(PortPoeStandardSensor(entry, coordinator, device.mac, port.port_idx))
                     new_entities.append(PortDownloadSensor(entry, coordinator, device.mac, port.port_idx))
                     new_entities.append(PortUploadSensor(entry, coordinator, device.mac, port.port_idx))
         if new_entities:
@@ -889,6 +891,53 @@ class PortUploadSensor(PortBaseSensor):
     @property
     def available(self) -> bool:
         return super().available and self.native_value is not None
+
+
+class PortPoeStandardSensor(PortBaseSensor):
+    """Which PoE standard a port is delivering (PoE / PoE+ / PoE++).
+
+    Derived from the 802.3 class the connected device negotiated, so it
+    reports the standard the device *requires*. Unavailable while the port
+    isn't powering anything. Attributes carry the class, the standards the
+    port itself supports, and live voltage/current.
+    """
+
+    _attr_translation_key = "port_poe_standard"
+    _attr_icon = "mdi:flash"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: UniFiNetworkPlusCoordinator,
+        device_mac: str,
+        port_idx: int,
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac, port_idx)
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_port{port_idx}_poe_standard"
+        port = self._find_port()
+        self._attr_translation_placeholders = {"port": port.name if port else f"Port {port_idx}"}
+
+    @property
+    def native_value(self) -> str | None:
+        port = self._find_port()
+        return port.poe_standard_in_use if port and port.poe_good else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        port = self._find_port()
+        if not port:
+            return {}
+        return {
+            "poe_class": port.poe_class_number,
+            "supported_standards": port.poe_supported_standards,
+            "max_supported_standard": (port.poe_supported_standards or [None])[-1],
+            "voltage_v": port.poe_voltage_volts,
+            "current_ma": port.poe_current_ma,
+        }
 
 
 class PortPoePowerSensor(PortBaseSensor):

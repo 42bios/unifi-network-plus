@@ -14,6 +14,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components" / "unifi_network_plus"))
 
 from parsing import (  # noqa: E402
+    decode_poe_caps,
+    poe_standard_for_class,
     parse_devices,
     parse_health,
     parse_monthly_usage,
@@ -517,6 +519,43 @@ def test_parse_devices_port_enabled_from_inverted_port_security_field() -> None:
     assert device.ports[0].port_enabled is True
     assert device.ports[1].port_enabled is False
     assert device.ports[2].port_enabled is None
+
+
+def test_parse_devices_port_poe_negotiation_from_live_shapes() -> None:
+    # Shapes taken from a live Switch Pro 48 PoE: a bt-capable port (caps 35)
+    # powering a class-4 device, an af/at port (caps 3) with nothing attached
+    # ("Unknown" class, poe_good False), and a non-PoE port (caps 0).
+    fixture = {
+        **_LIVE_SWITCH_DEVICE_FIXTURE,
+        "port_table": [
+            {"port_idx": 1, "name": "P1", "up": True, "poe_caps": 35, "poe_class": "Class 4",
+             "poe_good": True, "poe_voltage": "53.1", "poe_current": "120.5", "poe_mode": "auto"},
+            {"port_idx": 2, "name": "P2", "up": False, "poe_caps": 3, "poe_class": "Unknown",
+             "poe_good": False, "poe_mode": "auto"},
+            {"port_idx": 3, "name": "P3", "up": True, "poe_caps": 0},
+        ],
+    }
+    p1, p2, p3 = parse_devices([fixture])[0].ports
+    assert p1.poe_class_number == 4
+    assert p1.poe_standard_in_use == "PoE+ (802.3at)"
+    assert p1.poe_supported_standards == ["802.3af", "802.3at", "802.3bt"]
+    assert (p1.poe_voltage_volts, p1.poe_current_ma, p1.poe_good) == (53.1, 120.5, True)
+    assert p2.poe_class_number is None and p2.poe_standard_in_use is None
+    assert p2.poe_supported_standards == ["802.3af", "802.3at"]
+    assert p3.poe_supported_standards == [] and p3.poe_good is None
+
+
+def test_poe_standard_for_class_boundaries() -> None:
+    assert poe_standard_for_class(None) is None
+    assert [poe_standard_for_class(c) for c in (0, 3, 4, 5, 8)] == [
+        "PoE (802.3af)", "PoE (802.3af)", "PoE+ (802.3at)", "PoE++ (802.3bt)", "PoE++ (802.3bt)"
+    ]
+
+
+def test_decode_poe_caps_ignores_unknown_bits() -> None:
+    assert decode_poe_caps(None) == [] and decode_poe_caps(0) == []
+    assert decode_poe_caps(1) == ["802.3af"]
+    assert decode_poe_caps(64 | 2) == ["802.3at"]
 
 
 def test_parse_devices_led_override() -> None:

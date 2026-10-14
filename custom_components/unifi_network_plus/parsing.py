@@ -268,6 +268,23 @@ class PortStat:
     connected_mac: str | None
     connected_ip: str | None
     connected_name: str | None = None
+    # PoE negotiation, from port_table[] - confirmed live on a US48PRO/USL8LP.
+    # ``poe_class_number`` is the 802.3 class the powered device negotiated
+    # (None when nothing is being powered: the controller reports "Unknown").
+    # ``poe_caps`` is the port's capability bitmask (see ``decode_poe_caps``).
+    poe_class_number: int | None = None
+    poe_caps: int | None = None
+    poe_good: bool | None = None
+    poe_voltage_volts: float | None = None
+    poe_current_ma: float | None = None
+
+    @property
+    def poe_standard_in_use(self) -> str | None:
+        return poe_standard_for_class(self.poe_class_number)
+
+    @property
+    def poe_supported_standards(self) -> list[str]:
+        return decode_poe_caps(self.poe_caps)
 
 
 @dataclass(frozen=True)
@@ -355,6 +372,43 @@ def _parse_storage_percent(device: dict[str, Any]) -> float | None:
     return round((used or 0) / size * 100, 1)
 
 
+# poe_caps is a bitmask. Bits 1/2 = 802.3af/at confirmed live (value 3 on
+# standard PoE+ ports); bit 32 appears on exactly the eight 802.3bt ports of
+# a Switch Pro 48 PoE (value 35), so it is treated as 802.3bt (PoE++). Other
+# bits are not decoded - the raw value stays available as ``poe_caps``.
+_POE_CAPS_BITS = ((1, "802.3af"), (2, "802.3at"), (32, "802.3bt"))
+
+
+def decode_poe_caps(caps: int | None) -> list[str]:
+    """Names of the PoE standards a port's capability bitmask advertises."""
+    if not caps:
+        return []
+    return [name for bit, name in _POE_CAPS_BITS if caps & bit]
+
+
+def poe_standard_for_class(poe_class: int | None) -> str | None:
+    """Minimum PoE standard needed to power a device of this 802.3 class.
+
+    Classes 0-3 fit 802.3af, class 4 needs 802.3at, classes 5-8 need
+    802.3bt. A class-0 device may also be a low-draw at/bt device, so this
+    is the standard *required*, not necessarily the one in use.
+    """
+    if poe_class is None:
+        return None
+    if poe_class >= 5:
+        return "PoE++ (802.3bt)"
+    if poe_class == 4:
+        return "PoE+ (802.3at)"
+    return "PoE (802.3af)"
+
+
+def _parse_poe_class(value: Any) -> int | None:
+    """"Class 4" -> 4; "Unknown"/missing -> None."""
+    if isinstance(value, str) and value.lower().startswith("class "):
+        return _int_or_none(value[6:].strip())
+    return None
+
+
 def _parse_switch_ports(device: dict[str, Any]) -> tuple[float | None, int | None, int | None]:
     """Aggregate a switch's port_table into (poe_power_watts, active_ports,
     total_ports) - intentionally aggregated rather than one sensor per
@@ -407,6 +461,11 @@ def _parse_ports(device: dict[str, Any]) -> list[PortStat]:
                 network_name=p.get("network_name"),
                 connected_mac=last_connection.get("mac") if last_connection else None,
                 connected_ip=last_connection.get("ip") if last_connection else None,
+                poe_class_number=_parse_poe_class(p.get("poe_class")),
+                poe_caps=_int_or_none(p.get("poe_caps")),
+                poe_good=p.get("poe_good") if isinstance(p.get("poe_good"), bool) else None,
+                poe_voltage_volts=_num(p.get("poe_voltage")),
+                poe_current_ma=_num(p.get("poe_current")),
             )
         )
     return result

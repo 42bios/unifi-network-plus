@@ -136,6 +136,9 @@
       "port_poe_power": {
         "name": "{port} PoE Power"
       },
+      "port_poe_standard": {
+        "name": "{port} PoE Standard"
+      },
       "port_download": {
         "name": "{port} Download"
       },
