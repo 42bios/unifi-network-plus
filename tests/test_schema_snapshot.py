@@ -34,3 +34,10 @@ def test_diff_reports_removed_added_and_retyped(capsys) -> None:
 def test_diff_identical_returns_zero() -> None:
     snap = {"stat/sta": {"mac": ["str"]}}
     assert schema_snapshot.diff(snap, snap) == 0
+
+
+def test_shape_normalises_volatile_port_counter_keys() -> None:
+    a = schema_snapshot.shape([{"stat": {"port_14-rx_bytes": 1, "port_25-tx_bytes": 2}}])
+    b = schema_snapshot.shape([{"stat": {"port_3-rx_bytes": 9}}])
+    assert "stat.port_N-rx_bytes" in a and "stat.port_N-tx_bytes" in a
+    assert schema_snapshot.diff({"x": {"stat.port_N-rx_bytes": ["int"]}}, {"x": b}) == 0

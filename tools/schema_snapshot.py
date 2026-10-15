@@ -13,6 +13,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import re
 import sys
 import types
 from pathlib import Path
@@ -32,9 +33,15 @@ def _load_api():
     return importlib.import_module("unifi_network_plus_pkg.api")
 
 
+# Keys like "port_14-rx_bytes" only exist while that port has traffic, so the
+# raw key set flaps between snapshots. Normalise the port number.
+_VOLATILE_KEY = re.compile(r"(?<=port_)\d+")
+
+
 def _walk(value: Any, prefix: str, out: dict[str, set[str]]) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
+            key = _VOLATILE_KEY.sub("N", str(key))
             _walk(item, f"{prefix}.{key}" if prefix else key, out)
     elif isinstance(value, list):
         out.setdefault(prefix + "[]", set()).add("list")
