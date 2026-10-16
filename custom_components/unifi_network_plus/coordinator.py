@@ -21,6 +21,7 @@ from .parsing import (
     TrackedClient,
     WanHealth,
     WanThroughput,
+    merge_wan_fallback,
     parse_devices,
     parse_health,
     parse_monthly_usage,
@@ -125,11 +126,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
 
         wan = parse_wan_throughput(wan_samples)
         wan_health = parse_wan_health(health)
-        if wan.latency_ms is None and wan_health.latency_ms is not None:
-            # stat/report carries no latency field on some controller
-            # versions; stat/health's WAN uptime-monitor average is a
-            # reliable fallback where the report data is missing it.
-            wan = replace(wan, latency_ms=wan_health.latency_ms)
+        wan = merge_wan_fallback(wan, wan_health)
 
         return UniFiSnapshot(
             wan=wan,

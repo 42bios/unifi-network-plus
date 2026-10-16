@@ -8,7 +8,7 @@ involved.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace, field
 from typing import Any
 
 
@@ -649,6 +649,21 @@ def parse_wan_health(health_entries: list[dict[str, Any]]) -> WanHealth:
         tx_rate_mbps=round(tx_rate * 8 / 1_000_000, 2) if tx_rate is not None else None,
         wan2_availability_percent=round(wan2_availability, 2) if wan2_availability is not None else None,
     )
+
+
+def merge_wan_fallback(wan: WanThroughput, wan_health: WanHealth) -> WanThroughput:
+    """Fill gaps in the report-based throughput from stat/health's live values.
+
+    Network 11 (confirmed live on 11.0.83) replaced the statistics engine and
+    its ``stat/report/*`` endpoints return no samples at all, while
+    ``stat/health``'s ``{rx,tx}_bytes-r`` live rates and WAN monitor keep
+    working. Report values still win whenever they exist (older controllers).
+    """
+    if wan.download_mbps is None and wan.upload_mbps is None:
+        wan = replace(wan, download_mbps=wan_health.rx_rate_mbps, upload_mbps=wan_health.tx_rate_mbps)
+    if wan.latency_ms is None and wan_health.latency_ms is not None:
+        wan = replace(wan, latency_ms=wan_health.latency_ms)
+    return wan
 
 
 @dataclass(frozen=True)

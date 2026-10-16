@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components"
 
 from parsing import (  # noqa: E402
     decode_poe_caps,
+    merge_wan_fallback,
     poe_standard_for_class,
     parse_devices,
     parse_health,
@@ -799,3 +800,21 @@ def test_parse_tracked_clients_blocked_flag() -> None:
 def test_parse_tracked_clients_skips_entries_without_mac() -> None:
     result = parse_tracked_clients([{"name": "no-mac-here"}], online_clients=[])
     assert result == []
+
+
+def test_merge_wan_fallback_uses_health_rates_when_reports_are_empty() -> None:
+    # Network 11 (11.0.83): stat/report/* return no samples, stat/health still
+    # carries live {rx,tx}_bytes-r rates and the WAN monitor latency.
+    health = parse_wan_health([{"subsystem": "wan", "rx_bytes-r": 23313, "tx_bytes-r": 86829,
+                                "uptime_stats": {"WAN": {"availability": 99.9, "latency_average": 12}}}])
+    merged = merge_wan_fallback(parse_wan_throughput([]), health)
+    assert merged.download_mbps == 0.19 and merged.upload_mbps == 0.69
+    assert merged.latency_ms == 12
+
+
+def test_merge_wan_fallback_keeps_report_values_when_present() -> None:
+    wan = parse_wan_throughput(
+        [{"time": 0, "wan-rx_bytes": 75_000_000, "wan-tx_bytes": 7_500_000}], now_ms=10 * 60 * 1000
+    )
+    health = parse_wan_health([{"subsystem": "wan", "rx_bytes-r": 1, "tx_bytes-r": 1}])
+    assert merge_wan_fallback(wan, health).download_mbps == wan.download_mbps == 2.0
