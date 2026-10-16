@@ -85,6 +85,8 @@ async def async_setup_entry(
                 for spec in DEVICE_METRICS:
                     if spec.device_types is None or device.device_type in spec.device_types:
                         new_entities.append(DeviceMetricSensor(entry, coordinator, device.mac, spec))
+                if device.device_type in ("uap", "usw"):
+                    new_entities.append(DeviceUplinkSensor(entry, coordinator, device.mac))
             for radio in device.radios:
                 key = (device.mac, radio.radio)
                 if key not in known_radio_keys:
@@ -743,6 +745,34 @@ class DeviceMetricSensor(DeviceBaseSensor):
     def native_value(self) -> Any:
         device = self._find_device()
         return getattr(device, self._spec.key) if device else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
+class DeviceUplinkSensor(DeviceBaseSensor):
+    """Which upstream device (and port) an AP or switch hangs off."""
+
+    _attr_translation_key = "device_uplink"
+    _attr_icon = "mdi:lan-connect"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator, device_mac: str
+    ) -> None:
+        super().__init__(entry, coordinator, device_mac)
+        self._attr_unique_id = f"{entry.entry_id}_{device_mac}_uplink"
+
+    @property
+    def native_value(self) -> str | None:
+        device = self._find_device()
+        return device.uplink_device_name if device else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        device = self._find_device()
+        return {"port": device.uplink_port} if device and device.uplink_port is not None else {}
 
     @property
     def available(self) -> bool:

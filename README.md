@@ -205,6 +205,7 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | PoE Power | `stat/device` → `port_table[].poe_power`, summed | switches |
 | Active Ports | `stat/device` → `port_table[].up`, counted | switches |
 | Anomalies | `stat/device` → `anomalies` | all types; `-1` = "no data yet", surfaced as unavailable, same convention as Satisfaction |
+| Uplink | `stat/device` → `uplink.uplink_device_name` (Network 11: also `parent_device.name`) | APs and switches only; state is the upstream device's name, attribute `port` is the port on it. Unavailable when the controller doesn't report a parent |
 | Overheating (`binary_sensor`) | `stat/device` → `overheating` | all types; seen as `null` (not `false`) on every AP tested against, so it goes **unavailable** rather than assuming "not overheating" - switches/gateway reported a real `true`/`false` |
 | Firmware (`update` entity) | `stat/device` → `version`/`upgradable`/`upgrade_to_firmware` | all types; **read-only** - see below |
 

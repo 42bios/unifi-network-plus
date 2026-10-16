@@ -410,6 +410,10 @@ class DeviceInfo:
     # "on"/"off"/"default" (follows the site-wide LED setting) - confirmed
     # live as "off" on an AP.
     led_override: str | None
+    # Name and port of the upstream device this AP/switch is cabled (or
+    # meshed) to; None for gateways and when the controller doesn't say.
+    uplink_device_name: str | None = None
+    uplink_port: int | None = None
     radios: list[RadioStat] = field(default_factory=list)
     ports: list[PortStat] = field(default_factory=list)
 
@@ -571,6 +575,24 @@ def _parse_firmware(device: dict[str, Any]) -> tuple[str | None, str | None]:
     return installed, latest
 
 
+def _parse_uplink(device: dict[str, Any]) -> tuple[str | None, int | None]:
+    """Upstream device name and its port for an AP/switch.
+
+    ``uplink.uplink_device_name``/``uplink_remote_port`` exist on every
+    controller generation; Network 11 additionally reports the same as
+    ``parent_device.{name,port}``, used as a fallback.
+    """
+    if device.get("type") not in ("uap", "usw"):
+        return None, None
+    uplink = device.get("uplink") if isinstance(device.get("uplink"), dict) else {}
+    parent = device.get("parent_device") if isinstance(device.get("parent_device"), dict) else {}
+    name = uplink.get("uplink_device_name") or parent.get("name")
+    port = _int_or_none(uplink.get("uplink_remote_port"))
+    if port is None:
+        port = _int_or_none(parent.get("port"))
+    return (str(name) if name else None), port
+
+
 def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
     """Parse stat/device entries, including per-radio channel/retry stats."""
     result: list[DeviceInfo] = []
@@ -611,6 +633,7 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
         if anomalies is not None and anomalies < 0:
             anomalies = None  # -1 sentinel: no anomaly data yet
         overheating_raw = device.get("overheating")
+        uplink_name, uplink_port = _parse_uplink(device)
 
         result.append(
             DeviceInfo(
@@ -636,6 +659,8 @@ def parse_devices(devices: list[dict[str, Any]]) -> list[DeviceInfo]:
                 overheating=bool(overheating_raw) if overheating_raw is not None else None,
                 locating=bool(device.get("locating")) if device.get("locating") is not None else None,
                 led_override=device.get("led_override"),
+                uplink_device_name=uplink_name,
+                uplink_port=uplink_port,
                 radios=radios,
                 ports=ports,
             )

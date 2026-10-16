@@ -850,3 +850,13 @@ def test_monthly_counter_resets_on_new_month_and_roundtrips_through_storage() ->
     restored.update("2026-11", 1, 4_500_000_000, 0)  # only traffic since the last sample counts
     assert restored.usage(1).download_gb == 0.5 and restored.usage(1).days_counted == 1
     assert MonthlyCounterAccumulator.from_dict(None).usage(5).total_gb is None
+
+
+def test_parse_devices_uplink_from_uplink_block_and_parent_fallback() -> None:
+    base = {**_LIVE_SWITCH_DEVICE_FIXTURE, "type": "usw"}
+    wired = parse_devices([{**base, "uplink": {"uplink_device_name": "Core", "uplink_remote_port": 7}}])[0]
+    assert (wired.uplink_device_name, wired.uplink_port) == ("Core", 7)
+    parent = parse_devices([{**base, "uplink": {}, "parent_device": {"name": "Core", "port": 3}}])[0]
+    assert (parent.uplink_device_name, parent.uplink_port) == ("Core", 3)
+    gateway = parse_devices([{**base, "type": "uxg", "uplink": {"uplink_device_name": "ISP"}}])[0]
+    assert gateway.uplink_device_name is None

@@ -127,6 +127,9 @@
       "device_active_ports": {
         "name": "Active Ports"
       },
+      "device_uplink": {
+        "name": "Uplink"
+      },
       "device_anomalies": {
         "name": "Anomalies"
       },
