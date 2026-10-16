@@ -150,6 +150,87 @@ def parse_monthly_usage(daily_samples: list[dict[str, Any]], month_epoch_start_m
     return MonthlyUsage(download_gb, upload_gb, round(download_gb + upload_gb, 2), counted)
 
 
+def parse_wan_counters(raw_devices: list[dict[str, Any]]) -> tuple[int, int] | None:
+    """Sum the gateway's cumulative WAN byte counters (rx, tx).
+
+    ``wan1``/``wan2`` on a gateway's stat/device entry carry lifetime
+    ``rx_bytes``/``tx_bytes`` counters (confirmed live on 11.0.83). They
+    restart from zero when the gateway reboots. ``None`` if no gateway
+    reports them.
+    """
+    rx_total = tx_total = 0
+    found = False
+    for device in raw_devices:
+        for key in ("wan1", "wan2"):
+            wan = device.get(key)
+            if not isinstance(wan, dict):
+                continue
+            rx, tx = _int_or_none(wan.get("rx_bytes")), _int_or_none(wan.get("tx_bytes"))
+            if rx is None or tx is None:
+                continue
+            rx_total += rx
+            tx_total += tx
+            found = True
+    return (rx_total, tx_total) if found else None
+
+
+@dataclass
+class MonthlyCounterAccumulator:
+    """Calendar-month WAN usage built from cumulative counter deltas.
+
+    Network 11's new statistics engine leaves ``stat/report/daily.gw``
+    empty, so the monthly total is accumulated here from the gateway's WAN
+    counters instead. Counting starts at the first sample seen (earlier
+    traffic is unknowable from counters) and a counter that goes backwards
+    (gateway reboot) is treated as restarting from zero. Persisted by the
+    coordinator so restarts of Home Assistant don't lose the month.
+    """
+
+    month: str | None = None
+    first_day: int = 1
+    rx_bytes: int = 0
+    tx_bytes: int = 0
+    last_rx: int | None = None
+    last_tx: int | None = None
+
+    def update(self, month: str, day: int, rx: int, tx: int) -> None:
+        if self.month != month:
+            self.month, self.first_day = month, day
+            self.rx_bytes = self.tx_bytes = 0
+        if self.last_rx is not None and self.last_tx is not None:
+            self.rx_bytes += rx - self.last_rx if rx >= self.last_rx else rx
+            self.tx_bytes += tx - self.last_tx if tx >= self.last_tx else tx
+        self.last_rx, self.last_tx = rx, tx
+
+    def usage(self, day: int) -> MonthlyUsage:
+        if self.month is None:
+            return MonthlyUsage(None, None, None, 0)
+        download_gb = round(self.rx_bytes / 1_000_000_000, 2)
+        upload_gb = round(self.tx_bytes / 1_000_000_000, 2)
+        return MonthlyUsage(
+            download_gb, upload_gb, round(download_gb + upload_gb, 2), max(day - self.first_day + 1, 1)
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "month": self.month, "first_day": self.first_day, "rx_bytes": self.rx_bytes,
+            "tx_bytes": self.tx_bytes, "last_rx": self.last_rx, "last_tx": self.last_tx,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "MonthlyCounterAccumulator":
+        if not isinstance(data, dict):
+            return cls()
+        return cls(
+            month=data.get("month") if isinstance(data.get("month"), str) else None,
+            first_day=_int_or_none(data.get("first_day")) or 1,
+            rx_bytes=_int_or_none(data.get("rx_bytes")) or 0,
+            tx_bytes=_int_or_none(data.get("tx_bytes")) or 0,
+            last_rx=_int_or_none(data.get("last_rx")),
+            last_tx=_int_or_none(data.get("last_tx")),
+        )
+
+
 @dataclass(frozen=True)
 class TopClient:
     """One entry of the top-clients-by-traffic list."""

@@ -15,7 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components"
 
 from parsing import (  # noqa: E402
     decode_poe_caps,
+    MonthlyCounterAccumulator,
     merge_wan_fallback,
+    parse_wan_counters,
     poe_standard_for_class,
     parse_devices,
     parse_health,
@@ -818,3 +820,33 @@ def test_merge_wan_fallback_keeps_report_values_when_present() -> None:
     )
     health = parse_wan_health([{"subsystem": "wan", "rx_bytes-r": 1, "tx_bytes-r": 1}])
     assert merge_wan_fallback(wan, health).download_mbps == wan.download_mbps == 2.0
+
+
+def test_parse_wan_counters_sums_wan1_and_wan2_of_the_gateway() -> None:
+    gateway = {"wan1": {"rx_bytes": 100, "tx_bytes": 10}, "wan2": {"rx_bytes": 5, "tx_bytes": 1}}
+    switch = {"port_table": []}
+    assert parse_wan_counters([switch, gateway]) == (105, 11)
+    assert parse_wan_counters([switch]) is None
+    assert parse_wan_counters([{"wan1": {"rx_bytes": "x"}}]) is None
+
+
+def test_monthly_counter_accumulates_deltas_and_survives_gateway_reboot() -> None:
+    acc = MonthlyCounterAccumulator()
+    acc.update("2026-10", 16, 1_000_000_000, 100_000_000)  # first sample: baseline only
+    assert acc.usage(16).total_gb == 0.0
+    acc.update("2026-10", 16, 3_000_000_000, 300_000_000)
+    assert (acc.usage(16).download_gb, acc.usage(16).upload_gb) == (2.0, 0.2)
+    acc.update("2026-10", 17, 500_000_000, 50_000_000)  # reboot: counters restart from zero
+    usage = acc.usage(17)
+    assert (usage.download_gb, usage.upload_gb, usage.days_counted) == (2.5, 0.25, 2)
+
+
+def test_monthly_counter_resets_on_new_month_and_roundtrips_through_storage() -> None:
+    acc = MonthlyCounterAccumulator()
+    acc.update("2026-10", 30, 0, 0)
+    acc.update("2026-10", 31, 4_000_000_000, 0)
+    restored = MonthlyCounterAccumulator.from_dict(acc.to_dict())
+    assert restored.usage(31).download_gb == 4.0
+    restored.update("2026-11", 1, 4_500_000_000, 0)  # only traffic since the last sample counts
+    assert restored.usage(1).download_gb == 0.5 and restored.usage(1).days_counted == 1
+    assert MonthlyCounterAccumulator.from_dict(None).usage(5).total_gb is None

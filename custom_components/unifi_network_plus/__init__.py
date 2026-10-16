@@ -105,6 +105,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         scan_interval=scan_interval,
         top_clients_count=top_clients_count,
     )
+    await coordinator.async_load_state()
     await coordinator.async_config_entry_first_refresh()
 
     # Optional real-time layer: incoming WebSocket events just trigger an

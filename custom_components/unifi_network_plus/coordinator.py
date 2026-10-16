@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import UniFiApiError, UniFiAuthError, UniFiClient
-from .const import DEFAULT_TOP_CLIENTS
+from .const import DEFAULT_TOP_CLIENTS, DOMAIN
 from .parsing import (
     DeviceInfo,
     HealthSubsystem,
@@ -21,6 +23,7 @@ from .parsing import (
     TrackedClient,
     WanHealth,
     WanThroughput,
+    MonthlyCounterAccumulator,
     merge_wan_fallback,
     parse_devices,
     parse_health,
@@ -28,6 +31,7 @@ from .parsing import (
     parse_network_health,
     parse_top_clients,
     parse_tracked_clients,
+    parse_wan_counters,
     parse_wan_health,
     parse_wan_throughput,
 )
@@ -69,8 +73,33 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
             update_interval=timedelta(seconds=scan_interval),
         )
         self.entry_id = entry_id
+        self._usage_store: Store = Store(hass, 1, f"{DOMAIN}_{entry_id}_monthly_usage")
+        self._usage = MonthlyCounterAccumulator()
+        self._usage_saved_at = 0.0
         self.client = client
         self.top_clients_count = top_clients_count
+
+    async def async_load_state(self) -> None:
+        """Restore the persisted counter-based monthly usage."""
+        self._usage = MonthlyCounterAccumulator.from_dict(await self._usage_store.async_load())
+
+    def _monthly_usage(self, daily_samples: list, raw_devices: list, window_start) -> MonthlyUsage:
+        """Report-based total when the controller serves daily reports,
+        otherwise accumulated from the gateway's WAN counters (Network 11)."""
+        from_reports = parse_monthly_usage(daily_samples, window_start.timestamp() * 1000)
+        if from_reports.total_gb is not None:
+            return from_reports
+        counters = parse_wan_counters(raw_devices)
+        if counters is None:
+            return from_reports
+        now = dt_util.now()
+        self._usage.update(now.strftime("%Y-%m"), now.day, *counters)
+        # Throttled by hand: async_delay_save restarts its timer on every call,
+        # so with a poll interval below the delay it would never fire.
+        if time.monotonic() - self._usage_saved_at >= 300:
+            self._usage_saved_at = time.monotonic()
+            self._usage_store.async_delay_save(self._usage.to_dict, 1)
+        return self._usage.usage(now.day)
 
     async def _fetch_optional(self, label: str, coro):
         """Run one endpoint fetch; on auth/API error, log and degrade to empty.
@@ -132,7 +161,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
             wan=wan,
             wan_health=wan_health,
             network_health=parse_network_health(health),
-            monthly_usage=parse_monthly_usage(daily_samples, window_start.timestamp() * 1000),
+            monthly_usage=self._monthly_usage(daily_samples, devices, window_start),
             top_clients=parse_top_clients(clients, self.top_clients_count),
             devices=_resolve_port_connection_names(parse_devices(devices), clients, devices),
             health=parse_health(health),

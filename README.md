@@ -177,7 +177,7 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 
 | Sensor | Source | Notes |
 |---|---|---|
-| WAN Download / WAN Upload | `stat/report/5minutes.gw`, latest bucket | Mbps |
+| WAN Download / WAN Upload | `stat/report/5minutes.gw`, latest complete bucket; falls back to `stat/health` `{rx,tx}_bytes-r` live rates when the reports are empty (Network 11) | Mbps |
 | WAN Latency | `stat/health` → `uptime_stats.WAN.latency_average` | ms (the report endpoint carries no latency field on the tested controller) |
 | WAN Packet Loss | `stat/report/5minutes.gw` | %; **not confirmed** - no matching field found in the live response tested against, see below |
 | WAN Availability | `stat/health` → `uptime_stats.WAN.availability` | %; the controller's own rolling ping/DNS-monitor success rate |
@@ -189,7 +189,7 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | Connected Access Points | `stat/health` → `wlan.num_ap` | |
 | Switches | `stat/health` → `lan.num_sw` | |
 | Guest Clients / IoT Clients | `stat/health` → `wlan`+`lan`.`num_guest`/`num_iot`, summed | |
-| Monthly Data Usage | `stat/report/daily.gw`, summed for the current calendar month | GB, with download/upload as attributes |
+| Monthly Data Usage | `stat/report/daily.gw`, summed for the current calendar month; on Network 11 (whose reports are empty) accumulated from the gateway's `wan1`/`wan2` byte counters instead | GB, with download/upload as attributes. Counter mode starts counting when the integration first sees the gateway (earlier traffic isn't recoverable), survives HA restarts and gateway reboots, and starts over each month |
 | Top Clients | `stat/sta`, ranked by `rx_bytes + tx_bytes` | state = busiest client name, full ranked list (configurable count) as an attribute, including each client's signal (dBm), CCQ (UniFi's own 0-1000 connection-quality score), SSID and channel for wireless clients, and network name/VLAN ID for all clients |
 | Connected Clients | `stat/sta` | count |
 
@@ -295,10 +295,10 @@ Home Assistant restart or re-adding the integration required.
 
 Tested end-to-end (real login, every endpoint and sensor except WAN
 Packet Loss, every per-device metric across one `uap`/`usw`/`uxg`)
-against one UniFi OS console (UDM-family, controller 5.1.26, single
+against one UniFi OS console (Cloud Key Gen2 Plus, Network 10.6.106 and, as of this release, 11.0.83 RC; single
 site, 5 APs, 4 switches, 90 known clients). The write/control path was
-verified live too with a "Full Management" account: Locate actually
-toggled a real gateway's LED on then off. What it does *not* cover:
+verified live too with a "Full Management" account (on 10.6.106, not
+re-run on 11.0.83): Locate actually toggled a real gateway's LED on then off. What it does *not* cover:
 
 - Classic (non-UniFi-OS) controllers / Cloud Key Gen1 - the classic
   `/api/login` + `/api/s/<site>/...` code path is implemented and unit
