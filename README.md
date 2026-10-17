@@ -313,8 +313,9 @@ Tested end-to-end (real login, every endpoint and sensor except WAN
 Packet Loss, every per-device metric across one `uap`/`usw`/`uxg`)
 against one UniFi OS console (Cloud Key Gen2 Plus, Network 10.6.106 and, as of this release, 11.0.83 RC; single
 site, 5 APs, 4 switches, 90 known clients). The write/control path was
-verified live too with a "Full Management" account (on 10.6.106, not
-re-run on 11.0.83): Locate actually toggled a real gateway's LED on then off. What it does *not* cover:
+verified live too with a "Full Management" account: Locate actually
+toggled a real device's LED on then off, on 10.6.106 and again on 11.0.83
+(the other write actions were only exercised on 10.6.106). What it does *not* cover:
 
 - Classic (non-UniFi-OS) controllers / Cloud Key Gen1 - the classic
   `/api/login` + `/api/s/<site>/...` code path is implemented and unit
