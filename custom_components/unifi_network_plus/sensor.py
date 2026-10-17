@@ -53,7 +53,6 @@ async def async_setup_entry(
             WanLatencySensor(entry, coordinator),
             WanPacketLossSensor(entry, coordinator),
             WanAvailabilitySensor(entry, coordinator),
-            Wan2AvailabilitySensor(entry, coordinator),
             WanDropsSensor(entry, coordinator),
             IspNameSensor(entry, coordinator),
             SpeedtestDownloadSensor(entry, coordinator),
@@ -74,19 +73,37 @@ async def async_setup_entry(
     known_device_macs: set[str] = set()
     known_radio_keys: set[tuple[str, str]] = set()
     known_port_keys: set[tuple[str, int]] = set()
+    # Entities that only make sense once the controller reports a value for
+    # them (anomalies, PoE on a PoE-less switch, a second WAN, ...): created
+    # the first time a value shows up instead of sitting at "unavailable"
+    # forever on controllers/devices that never provide one.
+    known_lazy_keys: set[tuple] = set()
 
     def _discover_new_devices() -> None:
         if not coordinator.data:
             return
         new_entities: list[UniFiBaseSensor] = []
+        if ("wan2",) not in known_lazy_keys and coordinator.data.wan_health.wan2_availability_percent is not None:
+            known_lazy_keys.add(("wan2",))
+            new_entities.append(Wan2AvailabilitySensor(entry, coordinator))
         for device in coordinator.data.devices:
             if device.mac not in known_device_macs:
                 known_device_macs.add(device.mac)
                 for spec in DEVICE_METRICS:
-                    if spec.device_types is None or device.device_type in spec.device_types:
+                    if not spec.lazy and (spec.device_types is None or device.device_type in spec.device_types):
                         new_entities.append(DeviceMetricSensor(entry, coordinator, device.mac, spec))
                 if device.device_type in ("uap", "usw"):
                     new_entities.append(DeviceUplinkSensor(entry, coordinator, device.mac))
+            for spec in DEVICE_METRICS:
+                key = (device.mac, spec.key)
+                if (
+                    spec.lazy
+                    and key not in known_lazy_keys
+                    and (spec.device_types is None or device.device_type in spec.device_types)
+                    and getattr(device, spec.key) is not None
+                ):
+                    known_lazy_keys.add(key)
+                    new_entities.append(DeviceMetricSensor(entry, coordinator, device.mac, spec))
             for radio in device.radios:
                 key = (device.mac, radio.radio)
                 if key not in known_radio_keys:
@@ -100,11 +117,14 @@ async def async_setup_entry(
                 if key not in known_port_keys:
                     known_port_keys.add(key)
                     new_entities.append(PortLinkSpeedSensor(entry, coordinator, device.mac, port.port_idx))
-                    new_entities.append(PortPoePowerSensor(entry, coordinator, device.mac, port.port_idx))
                     if port.poe_mode is not None:
                         new_entities.append(PortPoeStandardSensor(entry, coordinator, device.mac, port.port_idx))
                     new_entities.append(PortDownloadSensor(entry, coordinator, device.mac, port.port_idx))
                     new_entities.append(PortUploadSensor(entry, coordinator, device.mac, port.port_idx))
+                poe_key = (device.mac, port.port_idx, "poe_power")
+                if poe_key not in known_lazy_keys and port.poe_power_watts is not None:
+                    known_lazy_keys.add(poe_key)
+                    new_entities.append(PortPoePowerSensor(entry, coordinator, device.mac, port.port_idx))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -688,6 +708,9 @@ class DeviceMetricSpec:
     device_class: SensorDeviceClass | None
     icon: str | None
     device_types: tuple[str, ...] | None
+    # Create the entity only once the controller reports a value (see
+    # sensor.py's discovery) instead of leaving a permanently dead one.
+    lazy: bool = False
 
 
 DEVICE_METRICS: list[DeviceMetricSpec] = [
@@ -705,10 +728,12 @@ DEVICE_METRICS: list[DeviceMetricSpec] = [
     DeviceMetricSpec("storage_percent", "device_storage", PERCENTAGE, None, "mdi:harddisk", ("uxg",)),
     DeviceMetricSpec(
         "poe_power_watts", "device_poe_power", UnitOfPower.WATT,
-        SensorDeviceClass.POWER, None, ("usw",),
+        SensorDeviceClass.POWER, None, ("usw",), lazy=True,
     ),
     DeviceMetricSpec("active_ports", "device_active_ports", None, None, "mdi:ethernet", ("usw",)),
-    DeviceMetricSpec("anomalies", "device_anomalies", None, None, "mdi:alert-circle-outline", None),
+    DeviceMetricSpec(
+        "anomalies", "device_anomalies", None, None, "mdi:alert-circle-outline", None, lazy=True
+    ),
 ]
 
 

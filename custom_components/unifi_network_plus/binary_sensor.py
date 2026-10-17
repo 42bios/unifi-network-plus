@@ -39,7 +39,9 @@ async def async_setup_entry(
             return
         new_entities: list[BinarySensorEntity] = []
         for device in coordinator.data.devices:
-            if device.mac not in known_device_macs:
+            # Only once the controller actually reports a value: APs send
+            # ``null``, which would otherwise leave a permanently dead entity.
+            if device.mac not in known_device_macs and device.overheating is not None:
                 known_device_macs.add(device.mac)
                 new_entities.append(OverheatingSensor(entry, coordinator, device.mac))
         if new_entities:

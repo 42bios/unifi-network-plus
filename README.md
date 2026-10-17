@@ -300,6 +300,13 @@ is ignored, so a glitch can't wipe anything. You can also delete such a
 device by hand from its device page; the integration allows that only while
 the controller doesn't report the device.
 
+Some entities are only created once the controller reports a value for
+them, so they don't sit at "unavailable" forever: Anomalies, the
+switch-level and per-port PoE Power sensors (a switch without PoE gets
+none), Overheating (APs report `null`) and WAN2 Availability (single-WAN
+setups have none). If a value shows up later, the entity appears on the
+next poll.
+
 ## What was verified vs. what still needs checking on your controller
 
 Tested end-to-end (real login, every endpoint and sensor except WAN
