@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -79,6 +80,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         self._usage = MonthlyCounterAccumulator()
         self._usage_saved_at = 0.0
         self._missing_devices = MissingDeviceTracker()
+        self._missing_clients = MissingDeviceTracker()
         self.client = client
         self.top_clients_count = top_clients_count
 
@@ -118,6 +120,21 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         for mac in self._missing_devices.update(set(by_mac), seen):
             _LOGGER.info("Removing UniFi device %s: no longer reported by the controller", mac)
             registry.async_update_device(by_mac[mac], remove_config_entry_id=self.entry_id)
+
+    def _prune_forgotten_clients(self, known_clients: list[dict]) -> None:
+        """Drop tracker entities for clients the controller has forgotten
+        (deleted from its client list), which would otherwise stay
+        unavailable forever."""
+        registry = er.async_get(self.hass)
+        by_mac = {
+            entity.unique_id.lower(): entity.entity_id
+            for entity in er.async_entries_for_config_entry(registry, self.entry_id)
+            if entity.domain == "device_tracker" and entity.unique_id
+        }
+        seen = {str(c["mac"]).lower() for c in known_clients if c.get("mac")}
+        for mac in self._missing_clients.update(set(by_mac), seen):
+            _LOGGER.info("Removing tracker for client %s: no longer known to the controller", mac)
+            registry.async_remove(by_mac[mac])
 
     async def _fetch_optional(self, label: str, coro):
         """Run one endpoint fetch; on auth/API error, log and degrade to empty.
@@ -176,6 +193,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         wan = merge_wan_fallback(wan, wan_health)
 
         self._prune_removed_devices(devices)
+        self._prune_forgotten_clients(all_known_clients)
 
         return UniFiSnapshot(
             wan=wan,

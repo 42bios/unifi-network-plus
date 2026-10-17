@@ -300,6 +300,9 @@ is ignored, so a glitch can't wipe anything. You can also delete such a
 device by hand from its device page; the integration allows that only while
 the controller doesn't report the device.
 
+Presence trackers follow the same rule: a client that was deleted from the
+controller's client list loses its tracker entity after 10 polls.
+
 Some entities are only created once the controller reports a value for
 them, so they don't sit at "unavailable" forever: Anomalies, the
 switch-level and per-port PoE Power sensors (a switch without PoE gets
