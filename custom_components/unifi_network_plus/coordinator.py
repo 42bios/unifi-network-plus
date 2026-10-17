@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -23,6 +24,7 @@ from .parsing import (
     TrackedClient,
     WanHealth,
     WanThroughput,
+    MissingDeviceTracker,
     MonthlyCounterAccumulator,
     merge_wan_fallback,
     parse_devices,
@@ -76,6 +78,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         self._usage_store: Store = Store(hass, 1, f"{DOMAIN}_{entry_id}_monthly_usage")
         self._usage = MonthlyCounterAccumulator()
         self._usage_saved_at = 0.0
+        self._missing_devices = MissingDeviceTracker()
         self.client = client
         self.top_clients_count = top_clients_count
 
@@ -100,6 +103,21 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
             self._usage_saved_at = time.monotonic()
             self._usage_store.async_delay_save(self._usage.to_dict, 1)
         return self._usage.usage(now.day)
+
+    def _prune_removed_devices(self, raw_devices: list[dict]) -> None:
+        """Drop HA devices (and with them their entities) for UniFi devices
+        the controller no longer knows, e.g. after hardware was retired."""
+        registry = dr.async_get(self.hass)
+        prefix = f"{self.entry_id}_"
+        by_mac: dict[str, str] = {}
+        for entry in dr.async_entries_for_config_entry(registry, self.entry_id):
+            for domain, identifier in entry.identifiers:
+                if domain == DOMAIN and identifier.startswith(prefix):
+                    by_mac[identifier[len(prefix):]] = entry.id
+        seen = {str(d.get("mac")) for d in raw_devices if d.get("mac")}
+        for mac in self._missing_devices.update(set(by_mac), seen):
+            _LOGGER.info("Removing UniFi device %s: no longer reported by the controller", mac)
+            registry.async_update_device(by_mac[mac], remove_config_entry_id=self.entry_id)
 
     async def _fetch_optional(self, label: str, coro):
         """Run one endpoint fetch; on auth/API error, log and degrade to empty.
@@ -156,6 +174,8 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         wan = parse_wan_throughput(wan_samples)
         wan_health = parse_wan_health(health)
         wan = merge_wan_fallback(wan, wan_health)
+
+        self._prune_removed_devices(devices)
 
         return UniFiSnapshot(
             wan=wan,

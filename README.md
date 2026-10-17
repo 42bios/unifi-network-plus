@@ -292,6 +292,14 @@ seen before and adds entities for them on the fly. Adopt a new AP or
 switch and its sensors appear automatically within one poll interval - no
 Home Assistant restart or re-adding the integration required.
 
+The reverse works too. A device the controller no longer lists at all
+(forgotten or removed, as opposed to merely offline - offline devices keep
+showing up) is removed from Home Assistant together with its entities after
+10 consecutive polls without it. An empty device list from the controller
+is ignored, so a glitch can't wipe anything. You can also delete such a
+device by hand from its device page; the integration allows that only while
+the controller doesn't report the device.
+
 ## What was verified vs. what still needs checking on your controller
 
 Tested end-to-end (real login, every endpoint and sensor except WAN

@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components"
 
 from parsing import (  # noqa: E402
     decode_poe_caps,
+    MissingDeviceTracker,
     MonthlyCounterAccumulator,
     merge_wan_fallback,
     parse_wan_counters,
@@ -860,3 +861,20 @@ def test_parse_devices_uplink_from_uplink_block_and_parent_fallback() -> None:
     assert (parent.uplink_device_name, parent.uplink_port) == ("Core", 3)
     gateway = parse_devices([{**base, "type": "uxg", "uplink": {"uplink_device_name": "ISP"}}])[0]
     assert gateway.uplink_device_name is None
+
+
+def test_missing_device_tracker_removes_only_after_consecutive_misses() -> None:
+    tracker = MissingDeviceTracker(threshold=3)
+    known = {"aa", "bb"}
+    assert tracker.update(known, {"aa", "bb"}) == set()
+    assert tracker.update(known, {"aa"}) == set()
+    assert tracker.update(known, {"aa", "bb"}) == set()  # came back: counter resets
+    assert tracker.update(known, {"aa"}) == set()
+    assert tracker.update(known, {"aa"}) == set()
+    assert tracker.update(known, {"aa"}) == {"bb"}
+
+
+def test_missing_device_tracker_ignores_empty_answer() -> None:
+    tracker = MissingDeviceTracker(threshold=1)
+    assert tracker.update({"aa"}, set()) == set()
+    assert tracker.update({"aa"}, {"zz"}) == {"aa"}

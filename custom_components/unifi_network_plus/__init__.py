@@ -10,6 +10,7 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNA
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.device_registry import DeviceEntry
 
 from .api import UniFiAuthError, UniFiClient, UniFiConnectionError
 from .const import (
@@ -135,3 +136,22 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             listener: UniFiEventListener = runtime[RUNTIME_EVENT_LISTENER]
             await listener.stop()
     return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry: DeviceEntry
+) -> bool:
+    """Allow deleting a device from the UI once the controller no longer reports it."""
+    prefix = f"{entry.entry_id}_"
+    macs = [
+        identifier[len(prefix):]
+        for domain, identifier in device_entry.identifiers
+        if domain == DOMAIN and identifier.startswith(prefix)
+    ]
+    if not macs:
+        return False  # the controller's own device entry
+    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    coordinator = runtime[RUNTIME_COORDINATOR] if runtime else None
+    if coordinator is None or not coordinator.data:
+        return True
+    return not any(device.mac == macs[0] for device in coordinator.data.devices)

@@ -231,6 +231,37 @@ class MonthlyCounterAccumulator:
         )
 
 
+class MissingDeviceTracker:
+    """Decide when a device the controller stopped reporting is really gone.
+
+    A device that is merely offline still shows up in ``stat/device`` (with a
+    non-connected state); one that was forgotten/removed disappears. A single
+    short or partial answer from the controller must not wipe devices, so a
+    MAC has to be absent for ``threshold`` consecutive polls, and an empty
+    answer is ignored altogether.
+    """
+
+    def __init__(self, threshold: int = 10) -> None:
+        self._threshold = threshold
+        self._missing: dict[str, int] = {}
+
+    def update(self, known: set[str], seen: set[str]) -> set[str]:
+        """Return the MACs from ``known`` that should now be removed."""
+        if not seen:
+            return set()
+        gone: set[str] = set()
+        for mac in known:
+            if mac in seen:
+                self._missing.pop(mac, None)
+                continue
+            self._missing[mac] = self._missing.get(mac, 0) + 1
+            if self._missing[mac] >= self._threshold:
+                gone.add(mac)
+        for mac in gone | (set(self._missing) - known):
+            self._missing.pop(mac, None)
+        return gone
+
+
 @dataclass(frozen=True)
 class TopClient:
     """One entry of the top-clients-by-traffic list."""
