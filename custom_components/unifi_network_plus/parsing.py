@@ -175,6 +175,34 @@ def parse_wan_counters(raw_devices: list[dict[str, Any]]) -> tuple[int, int] | N
 
 
 @dataclass(frozen=True)
+class WlanInfo:
+    """One configured WLAN (SSID) from rest/wlanconf."""
+
+    wlan_id: str
+    name: str
+    enabled: bool | None
+    is_guest: bool
+
+
+def parse_wlans(raw_wlans: list[dict[str, Any]]) -> list[WlanInfo]:
+    result: list[WlanInfo] = []
+    for wlan in raw_wlans:
+        wlan_id = wlan.get("_id")
+        if not wlan_id:
+            continue
+        enabled = wlan.get("enabled")
+        result.append(
+            WlanInfo(
+                wlan_id=str(wlan_id),
+                name=str(wlan.get("name") or wlan_id),
+                enabled=bool(enabled) if enabled is not None else None,
+                is_guest=bool(wlan.get("is_guest", False)),
+            )
+        )
+    return result
+
+
+@dataclass(frozen=True)
 class WanLink:
     """Link state of one WAN port on the gateway (``wan1``/``wan2``)."""
 

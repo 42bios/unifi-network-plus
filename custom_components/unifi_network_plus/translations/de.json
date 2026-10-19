@@ -169,6 +169,9 @@
       }
     },
     "switch": {
+      "wlan": {
+        "name": "WLAN {ssid}"
+      },
       "locate": {
         "name": "Orten"
       },

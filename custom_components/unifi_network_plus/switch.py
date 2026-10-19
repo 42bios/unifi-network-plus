@@ -57,11 +57,16 @@ async def async_setup_entry(
     known_poe_port_keys: set[tuple[str, int]] = set()
     known_enable_port_keys: set[tuple[str, int]] = set()
     known_client_macs: set[str] = set()
+    known_wlan_ids: set[str] = set()
 
     def _discover_new_entities() -> None:
         if not coordinator.data:
             return
         new_entities: list[CoordinatorEntity] = []
+        for wlan in coordinator.data.wlans:
+            if wlan.wlan_id not in known_wlan_ids and wlan.enabled is not None:
+                known_wlan_ids.add(wlan.wlan_id)
+                new_entities.append(WlanSwitch(entry, coordinator, wlan.wlan_id))
         for device in coordinator.data.devices:
             if device.mac not in known_device_macs:
                 known_device_macs.add(device.mac)
@@ -293,6 +298,68 @@ class DeviceLedSwitch(_DeviceControlBase):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.coordinator.client.set_device_led(self._device_mac, "off")
+        await self.coordinator.async_request_refresh()
+
+
+class WlanSwitch(CoordinatorEntity[UniFiNetworkPlusCoordinator], SwitchEntity):
+    """Enable or disable a whole WLAN (SSID).
+
+    Disabled by default: turning a WLAN off disconnects every client on it
+    at once (including this Home Assistant's own devices if they use it), so
+    it is opt-in per SSID, like the other disruptive switches.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "wlan"
+    _attr_icon = "mdi:wifi"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator, wlan_id: str) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._wlan_id = wlan_id
+        self._attr_unique_id = f"{entry.entry_id}_wlan_{wlan_id}"
+        wlan = self._find_wlan()
+        self._attr_translation_placeholders = {"ssid": wlan.name if wlan else wlan_id}
+
+    def _find_wlan(self):
+        if not self.coordinator.data:
+            return None
+        for wlan in self.coordinator.data.wlans:
+            if wlan.wlan_id == self._wlan_id:
+                return wlan
+        return None
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": self._entry.title,
+            "manufacturer": MANUFACTURER,
+            "model": "Network Controller",
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        wlan = self._find_wlan()
+        return wlan.enabled if wlan else None
+
+    @property
+    def _has_control_permission(self) -> bool:
+        role = self.coordinator.client.site_role
+        return role is None or role == "admin"
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._find_wlan() is not None and self._has_control_permission
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_wlan_enabled(self._wlan_id, True)
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.client.set_wlan_enabled(self._wlan_id, False)
         await self.coordinator.async_request_refresh()
 
 

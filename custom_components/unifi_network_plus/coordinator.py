@@ -24,6 +24,7 @@ from .parsing import (
     TopClient,
     TrackedClient,
     WanLink,
+    WlanInfo,
     WanHealth,
     WanThroughput,
     MissingDeviceTracker,
@@ -38,6 +39,7 @@ from .parsing import (
     parse_wan_counters,
     parse_wan_health,
     parse_wan_links,
+    parse_wlans,
     parse_wan_throughput,
 )
 
@@ -58,6 +60,7 @@ class UniFiSnapshot:
     client_count: int
     tracked_clients: list[TrackedClient]
     wan_links: list[WanLink] = field(default_factory=list)
+    wlans: list[WlanInfo] = field(default_factory=list)
 
 
 class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
@@ -180,6 +183,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         daily_samples = await self._fetch_optional(
             "stat/report/daily.gw (monthly usage)", self.client.get_wan_report_daily()
         )
+        wlans_raw = await self._fetch_optional("rest/wlanconf (WLANs)", self.client.get_wlans())
         all_known_clients = await self._fetch_optional(
             "rest/user (known clients, for presence tracking)", self.client.get_all_known_clients()
         )
@@ -209,6 +213,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
             client_count=len(clients),
             tracked_clients=parse_tracked_clients(all_known_clients, clients),
             wan_links=parse_wan_links(devices),
+            wlans=parse_wlans(wlans_raw),
         )
 
 

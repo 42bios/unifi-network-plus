@@ -17,6 +17,7 @@ from parsing import (  # noqa: E402
     decode_poe_caps,
     MissingDeviceTracker,
     parse_wan_links,
+    parse_wlans,
     MonthlyCounterAccumulator,
     merge_wan_fallback,
     parse_wan_counters,
@@ -894,3 +895,19 @@ def test_parse_wan_links_reports_state_and_active_uplink() -> None:
     ]
     assert parse_wan_links([{"type": "usw"}]) == []
     assert parse_wan_links([{"type": "uxg", "wan1": {}}])[0].up is None
+
+
+def test_parse_wlans_keeps_disabled_and_skips_entries_without_id() -> None:
+    wlans = parse_wlans(
+        [
+            {"_id": "w1", "name": "Home", "enabled": True},
+            {"_id": "w2", "name": "Guest", "enabled": False, "is_guest": True},
+            {"_id": "w3", "name": "NoState"},
+            {"name": "NoId", "enabled": True},
+        ]
+    )
+    assert [(w.wlan_id, w.name, w.enabled, w.is_guest) for w in wlans] == [
+        ("w1", "Home", True, False),
+        ("w2", "Guest", False, True),
+        ("w3", "NoState", None, False),
+    ]

@@ -103,6 +103,7 @@ listed honestly, not omitted).
 | Restart device | ✅ (soft only) | ✅ (soft only) |
 | PoE port on/off (persistent) | ✅ | ✅ |
 | PoE port power-cycle (momentary) | ✅ | ✅ |
+| WLAN (SSID) enable/disable | ✅ | ✅ |
 | Port link enable/disable | ✅ | ✅ |
 | Block/unblock client | ✅ | ✅ |
 | Reconnect (kick) client | ✅ | ❌ |
@@ -255,6 +256,7 @@ State is `home`/`not_home`, with `is_wired`, `is_guest`, `is_blocked`, `last_see
 | Port PoE (`switch`, per switch port, **disabled by default**) | Turns PoE power on ("auto") or off for one port. This can disconnect whatever is plugged into that port (an AP, camera, ...) - only enable it for a specific port you've deliberately chosen to control. |
 | Port Enabled (`switch`, per port, **disabled by default**) | Enables/disables a port's forwarding at the link level - same risk as Port PoE, just not power-based. A port can have both entities if it supports both. |
 | Block Client (`switch`, per client, **disabled by default**) | Blocks/unblocks a client from the network entirely - the classic parental-control/access-control action. |
+| WLAN (`switch`, per SSID, **disabled by default**) | `rest/wlanconf` → `enabled`; turning it off sets `enabled: false` on that WLAN. Disables the SSID for **every** client on it at once (including Home Assistant's own devices if they use it), so it is opt-in per SSID like the other disruptive switches. Needs the same Admin account permission as the other controls |
 | Reconnect Client (`button`, per client, **disabled by default**) | Forces a connected client to disconnect and immediately re-associate - not a block, just a nudge for a client stuck on a bad AP/band. |
 | Restart (`button`, per device, **disabled by default**) | Soft-restarts a device. Real, disruptive action - the device and everything connected through it briefly goes offline. |
 | Power Cycle (`button`, per PoE port, **disabled by default**) | Momentarily cuts and restores PoE power to one port - a nudge for a stuck PoE device without leaving it off, unlike the PoE switch above. |
@@ -434,7 +436,7 @@ path and client presence were the real remaining gap, and both are done.
 
 **Done:** all stats/diagnostics from the intro; client presence
 (`device_tracker`, one per client ever seen, from `rest/user` +
-`stat/sta`); Block/Reconnect Client; Locate, LED, PoE port, Port Enabled
+`stat/sta`); Block/Reconnect Client; Locate, LED, PoE port, Port Enabled, WLAN
 switches, Restart and PoE Power Cycle buttons, all gated on an **Account
 Permission** sensor (site-role check, same mechanism core's `hub.is_admin`
 uses) so they go unavailable up front rather than failing on first use.
@@ -445,7 +447,6 @@ Verified live: Locate actually toggled a real gateway's LED on then off.
 | Item | Why deferred |
 |---|---|
 | Firmware `update.async_install` | Mechanism is confirmed (`cmd/devmgr` upgrade), but a remote firmware flash is the highest-risk write this integration could do - needs its own explicit sign-off. |
-| WiFi SSID enable/disable | Drops every client on that network at once (unlike one PoE port); would also need UniFi's API-key REST API, not the legacy endpoints used elsewhere. |
 | WAN Packet Loss | No matching field found in the tested controller's responses at all - `parsing.py` has a candidate list ready if one turns up on another firmware version. |
 | Validate on a classic (non-UniFi-OS) controller / other firmware versions | Only unit-tested against mocked responses so far, not a real classic controller. |
 | Firewall/DPI/traffic policy, smart plug control | Out of scope so far - a materially larger surface than device/client control. |

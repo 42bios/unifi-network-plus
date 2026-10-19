@@ -695,3 +695,26 @@ async def test_power_cycle_port_sends_power_cycle_command(api_module) -> None:
             "mac": "aa:bb:cc:dd:ee:ff",
             "port_idx": 3,
         }
+
+
+@pytest.mark.asyncio
+async def test_set_wlan_enabled_puts_only_the_enabled_flag(api_module) -> None:
+    async with aiohttp.ClientSession() as session:
+        client = api_module.UniFiClient(session, "udm.local", "user", "pass")
+        with aioresponses() as mocked:
+            mocked.get("https://udm.local:443/", status=200)
+            mocked.post(
+                "https://udm.local:443/api/auth/login",
+                status=200,
+                payload={},
+                headers={"X-CSRF-Token": "csrf-123"},
+            )
+            mocked.put(
+                "https://udm.local:443/proxy/network/api/s/default/rest/wlanconf/wlan-1",
+                status=200,
+                payload={"data": []},
+            )
+            await client.set_wlan_enabled("wlan-1", False)
+
+        calls = _calls_for(mocked, "PUT", "/rest/wlanconf/wlan-1")
+        assert calls[0].kwargs["json"] == {"enabled": False}

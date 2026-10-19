@@ -458,6 +458,14 @@ class UniFiClient:
             json_body={"led_override": status},
         )
 
+    async def get_wlans(self) -> list[dict[str, Any]]:
+        """All configured WLANs (SSIDs), including disabled ones."""
+        return await self._get("rest/wlanconf")
+
+    async def set_wlan_enabled(self, wlan_id: str, enabled: bool) -> None:
+        """Enable/disable one WLAN (SSID). Disabling drops every client on it."""
+        await self._request("PUT", f"rest/wlanconf/{wlan_id}", json_body={"enabled": enabled})
+
     async def power_cycle_port(self, switch_mac: str, port_idx: int) -> None:
         """Momentarily power-cycle one PoE port (off then back on).
 
