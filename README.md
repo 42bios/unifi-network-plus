@@ -6,6 +6,8 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![GitHub release](https://img.shields.io/github/v/release/42bios/unifi-network-plus)](https://github.com/42bios/unifi-network-plus/releases)
 
+[![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=42bios&repository=unifi-network-plus&category=integration)
+
 Home Assistant custom integration that talks **directly** to a local
 Ubiquiti UniFi Network Controller / UniFi OS console. Started as a
 companion to the core `unifi` integration (extra stats it doesn't expose);
