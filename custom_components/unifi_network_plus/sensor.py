@@ -86,6 +86,11 @@ async def async_setup_entry(
         if ("wan2",) not in known_lazy_keys and coordinator.data.wan_health.wan2_availability_percent is not None:
             known_lazy_keys.add(("wan2",))
             new_entities.append(Wan2AvailabilitySensor(entry, coordinator))
+        if ("active_wan",) not in known_lazy_keys and any(
+            link.is_uplink for link in coordinator.data.wan_links
+        ):
+            known_lazy_keys.add(("active_wan",))
+            new_entities.append(ActiveWanSensor(entry, coordinator))
         for device in coordinator.data.devices:
             if device.mac not in known_device_macs:
                 known_device_macs.add(device.mac)
@@ -273,6 +278,31 @@ class Wan2AvailabilitySensor(UniFiBaseSensor):
     @property
     def native_value(self) -> float | None:
         return self.coordinator.data.wan_health.wan2_availability_percent if self.coordinator.data else None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
+class ActiveWanSensor(UniFiBaseSensor):
+    """Which WAN currently carries the traffic - changes on a failover."""
+
+    _attr_translation_key = "active_wan"
+    _attr_icon = "mdi:router-network"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator) -> None:
+        super().__init__(entry, coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_active_wan"
+
+    @property
+    def native_value(self) -> str | None:
+        if not self.coordinator.data:
+            return None
+        for link in self.coordinator.data.wan_links:
+            if link.is_uplink:
+                return link.label
+        return None
 
     @property
     def available(self) -> bool:

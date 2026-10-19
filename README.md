@@ -182,6 +182,7 @@ the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 | WAN Packet Loss | `stat/report/5minutes.gw` | %; **not confirmed** - no matching field found in the live response tested against, see below |
 | WAN Availability | `stat/health` → `uptime_stats.WAN.availability` | %; the controller's own rolling ping/DNS-monitor success rate |
 | WAN2 Availability | `stat/health` → `uptime_stats.WAN2.availability` | %; secondary/failover WAN, same rolling monitor. Goes **unavailable** (not 0%) when the controller has no WAN2 monitor entry at all, which is the common single-WAN case |
+| Active WAN | `stat/device` (gateway) → `wan1.is_uplink` / `wan2.is_uplink` | Text (`WAN` / `WAN2`): which WAN currently carries the traffic, so a failover shows up as a state change. Only created once a gateway reports it |
 | WAN Drops | `stat/health` → `www.drops` | count |
 | ISP Name | `stat/health` → `www.isp_name` | |
 | Speedtest Download / Upload / Ping | `stat/health` → `www.xput_down` / `xput_up` / `speedtest_ping` | the controller's own periodic/manual "ISP Speed Test" result - **not a continuous live measurement**, reads 0 between runs |
@@ -242,6 +243,7 @@ State is `home`/`not_home`, with `is_wired`, `is_guest`, `is_blocked`, `last_see
 | Entity | Source |
 |---|---|
 | Realtime Connection (`binary_sensor`) | Whether the WebSocket event stream (see [Polling frequency](#polling-frequency---is-this-live)) is currently connected. Purely informational - the integration works identically either way, just faster when this is `on`. |
+| WAN Link / WAN2 Link (`binary_sensor`) | `stat/device` (gateway) → `wan1.up` / `wan2.up` | Connectivity per WAN port; attributes `interface` and `active`. One per WAN port the gateway reports (also an unplugged WAN2, then simply off) |
 | Account Permission | The configured account's site role (`admin`/`readonly`/...), from `GET self/sites` - the same check core `unifi` uses for `hub.is_admin`. Lets you see at a glance whether the Control entities below can actually work, without reading logs. |
 
 ### Control (write operations - see permissions note above)

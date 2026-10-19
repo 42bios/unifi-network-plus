@@ -33,11 +33,16 @@ async def async_setup_entry(
     async_add_entities([RealtimeConnectedSensor(entry, listener)])
 
     known_device_macs: set[str] = set()
+    known_wan_keys: set[str] = set()
 
     def _discover_new_devices() -> None:
         if not coordinator.data:
             return
         new_entities: list[BinarySensorEntity] = []
+        for link in coordinator.data.wan_links:
+            if link.key not in known_wan_keys:
+                known_wan_keys.add(link.key)
+                new_entities.append(WanLinkSensor(entry, coordinator, link.key, link.label))
         for device in coordinator.data.devices:
             # Only once the controller actually reports a value: APs send
             # ``null``, which would otherwise leave a permanently dead entity.
@@ -99,6 +104,53 @@ class RealtimeConnectedSensor(BinarySensorEntity):
     @callback
     def _refresh(self, _now) -> None:
         self.async_write_ha_state()
+
+
+class WanLinkSensor(CoordinatorEntity[UniFiNetworkPlusCoordinator], BinarySensorEntity):
+    """Whether one WAN port (WAN / WAN2) of the gateway has a link."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "wan_link"
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self, entry: ConfigEntry, coordinator: UniFiNetworkPlusCoordinator, key: str, label: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._key = key
+        self._attr_unique_id = f"{entry.entry_id}_{key}_link"
+        self._attr_translation_placeholders = {"wan": label}
+
+    def _find_link(self):
+        if not self.coordinator.data:
+            return None
+        for link in self.coordinator.data.wan_links:
+            if link.key == self._key:
+                return link
+        return None
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": self._entry.title,
+            "manufacturer": MANUFACTURER,
+            "model": "Network Controller",
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        link = self._find_link()
+        return link.up if link else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        link = self._find_link()
+        if not link:
+            return {}
+        return {"interface": link.ifname, "active": link.is_uplink}
 
 
 class OverheatingSensor(CoordinatorEntity[UniFiNetworkPlusCoordinator], BinarySensorEntity):

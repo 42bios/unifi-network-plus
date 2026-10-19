@@ -85,6 +85,9 @@
       "iot_clients": {
         "name": "IoT Clients"
       },
+      "active_wan": {
+        "name": "Active WAN"
+      },
       "monthly_usage": {
         "name": "Monthly Data Usage"
       },
@@ -155,6 +158,9 @@
       }
     },
     "binary_sensor": {
+      "wan_link": {
+        "name": "{wan} Link"
+      },
       "realtime_connected": {
         "name": "Realtime Connection"
       },

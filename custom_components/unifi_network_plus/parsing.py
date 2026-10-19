@@ -174,6 +174,48 @@ def parse_wan_counters(raw_devices: list[dict[str, Any]]) -> tuple[int, int] | N
     return (rx_total, tx_total) if found else None
 
 
+@dataclass(frozen=True)
+class WanLink:
+    """Link state of one WAN port on the gateway (``wan1``/``wan2``)."""
+
+    key: str
+    label: str
+    up: bool | None
+    is_uplink: bool | None
+    ifname: str | None
+
+
+_WAN_LABELS = {"wan1": "WAN", "wan2": "WAN2"}
+
+
+def parse_wan_links(raw_devices: list[dict[str, Any]]) -> list[WanLink]:
+    """WAN port states from the gateway's stat/device entry.
+
+    ``is_uplink`` marks the WAN currently carrying traffic, which is what
+    shows a failover. Confirmed live on 11.0.83 (UXG-Pro with WAN2 unplugged:
+    ``wan2.up`` false, ``wan1.is_uplink`` true).
+    """
+    links: list[WanLink] = []
+    for device in raw_devices:
+        if device.get("type") not in ("uxg", "ugw", "udm"):
+            continue
+        for key, label in _WAN_LABELS.items():
+            wan = device.get(key)
+            if not isinstance(wan, dict):
+                continue
+            links.append(
+                WanLink(
+                    key=key,
+                    label=label,
+                    up=bool(wan["up"]) if wan.get("up") is not None else None,
+                    is_uplink=bool(wan["is_uplink"]) if wan.get("is_uplink") is not None else None,
+                    ifname=str(wan["ifname"]) if wan.get("ifname") else None,
+                )
+            )
+        break  # one gateway per site
+    return links
+
+
 @dataclass
 class MonthlyCounterAccumulator:
     """Calendar-month WAN usage built from cumulative counter deltas.

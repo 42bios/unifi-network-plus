@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "custom_components"
 from parsing import (  # noqa: E402
     decode_poe_caps,
     MissingDeviceTracker,
+    parse_wan_links,
     MonthlyCounterAccumulator,
     merge_wan_fallback,
     parse_wan_counters,
@@ -878,3 +879,18 @@ def test_missing_device_tracker_ignores_empty_answer() -> None:
     tracker = MissingDeviceTracker(threshold=1)
     assert tracker.update({"aa"}, set()) == set()
     assert tracker.update({"aa"}, {"zz"}) == {"aa"}
+
+
+def test_parse_wan_links_reports_state_and_active_uplink() -> None:
+    gateway = {
+        "type": "uxg",
+        "wan1": {"up": True, "is_uplink": True, "ifname": "eth2"},
+        "wan2": {"up": False, "is_uplink": False, "ifname": "eth0"},
+    }
+    links = parse_wan_links([{"type": "usw", "wan1": {"up": True}}, gateway])
+    assert [(l.label, l.up, l.is_uplink, l.ifname) for l in links] == [
+        ("WAN", True, True, "eth2"),
+        ("WAN2", False, False, "eth0"),
+    ]
+    assert parse_wan_links([{"type": "usw"}]) == []
+    assert parse_wan_links([{"type": "uxg", "wan1": {}}])[0].up is None
