@@ -385,13 +385,18 @@ Config flow fields:
 
 | Field | Notes |
 |---|---|
-| Host / IP | e.g. `192.168.1.1` or `unifi.local` |
-| Username / Password | the local read-only account above |
-| Site name | `default` unless you run multiple sites |
-| Port | `443` unless customized |
-| Verify SSL certificate | off by default (most controllers use a self-signed cert); enable if you have a trusted cert |
-| Scan interval | seconds, default 60 |
-| Number of top clients | how many entries to include in the Top Clients attribute list, default 5 |
+| Controller address | e.g. `192.168.1.1` or `unifi.local`; a leading `https://` is removed for you |
+| Username / Password | the dedicated local account above |
+| Advanced (collapsed): Site name | `default` unless you run multiple sites |
+| Advanced: Port | `443` for UniFi OS consoles, `8443` for a classic controller |
+| Advanced: Verify SSL certificate | off by default (most controllers use a self-signed cert); enable if you have a trusted cert |
+
+Scan interval (default 60 s) and the number of top clients (default 5) are
+under **Configure** on the integration card. **Reconfigure** (three-dot menu)
+changes host, port, account or SSL later without removing the integration;
+leave the password empty there to keep the current one. If the controller
+rejects the login (for example after a password change), Home Assistant
+offers a re-authentication form.
 
 **Troubleshooting:** Settings → Devices & Services → UniFi Network+ → the
 three-dot menu on the integration card → "Download diagnostics" gives a

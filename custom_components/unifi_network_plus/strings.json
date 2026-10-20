@@ -2,17 +2,33 @@
   "config": {
     "step": {
       "user": {
-        "title": "UniFi Network+",
-        "description": "Connect to your local UniFi Network Controller / UniFi OS console. A dedicated local read-only account is recommended over your cloud admin credentials.",
+        "title": "Connect to UniFi",
+        "description": "Connect to your local **UniFi Network Controller** or UniFi OS console.\n\nUse a **dedicated local account**, not your ui.com cloud login. Read-only is enough for the sensors; the controls (switches, buttons) need the **Full Management** role.",
         "data": {
-          "host": "Host / IP",
+          "host": "Controller address",
           "username": "Username",
-          "password": "Password",
-          "site": "Site name",
-          "port": "Port",
-          "verify_ssl": "Verify SSL certificate",
-          "scan_interval": "Scan interval (s)",
-          "top_clients_count": "Number of top clients to track"
+          "password": "Password"
+        },
+        "data_description": {
+          "host": "IP address or hostname, for example `192.168.1.1`. A leading https:// is removed automatically.",
+          "username": "A local account on the controller.",
+          "password": "Password of that account."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced settings",
+            "description": "The defaults suit a UniFi OS console. Change them only if the connection fails.",
+            "data": {
+              "site": "Site name",
+              "port": "Port",
+              "verify_ssl": "Verify SSL certificate"
+            },
+            "data_description": {
+              "site": "Internal site name, almost always `default`.",
+              "port": "`443` for UniFi OS consoles, `8443` for a classic standalone controller.",
+              "verify_ssl": "Leave off if the controller uses a self-signed certificate."
+            }
+          }
         }
       },
       "reauth_confirm": {
@@ -22,6 +38,34 @@
           "username": "Username",
           "password": "Password"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure UniFi Network+",
+        "description": "Change the connection settings. They are checked before they are saved; the site cannot be changed.",
+        "data": {
+          "host": "Controller address",
+          "username": "Username",
+          "password": "Password"
+        },
+        "data_description": {
+          "host": "IP address or hostname, for example `192.168.1.1`. A leading https:// is removed automatically.",
+          "username": "A local account on the controller.",
+          "password": "Leave empty to keep the current password."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced settings",
+            "description": "The defaults suit a UniFi OS console. Change them only if the connection fails.",
+            "data": {
+              "port": "Port",
+              "verify_ssl": "Verify SSL certificate"
+            },
+            "data_description": {
+              "port": "`443` for UniFi OS consoles, `8443` for a classic standalone controller.",
+              "verify_ssl": "Leave off if the controller uses a self-signed certificate."
+            }
+          }
+        }
       }
     },
     "error": {
@@ -30,7 +74,8 @@
     },
     "abort": {
       "already_configured": "This controller/site is already configured",
-      "reauth_successful": "Re-authentication was successful"
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Reconfiguration was successful"
     }
   },
   "options": {
@@ -40,6 +85,10 @@
         "data": {
           "scan_interval": "Scan interval (s)",
           "top_clients_count": "Number of top clients to track"
+        },
+        "data_description": {
+          "scan_interval": "How often the controller is polled. Events from the controller trigger extra refreshes in between.",
+          "top_clients_count": "How many of the busiest clients the Top Clients sensor lists."
         }
       }
     }

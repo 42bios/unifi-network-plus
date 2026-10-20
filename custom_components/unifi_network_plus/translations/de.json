@@ -2,17 +2,33 @@
   "config": {
     "step": {
       "user": {
-        "title": "UniFi Network+",
-        "description": "Verbindung zum lokalen UniFi Network Controller / UniFi-OS-Console. Ein dediziertes lokales Nur-Lese-Konto wird anstelle der Cloud-Admin-Zugangsdaten empfohlen.",
+        "title": "Mit UniFi verbinden",
+        "description": "Verbinde dich mit deinem lokalen **UniFi Network Controller** oder deiner UniFi-OS-Konsole.\n\nNimm ein **eigenes lokales Konto**, nicht dein ui.com-Cloud-Login. Für die Sensoren reicht Nur-Lese; die Steuerung (Schalter, Buttons) braucht die Rolle **Full Management**.",
         "data": {
-          "host": "Host / IP",
+          "host": "Adresse des Controllers",
           "username": "Benutzername",
-          "password": "Passwort",
-          "site": "Site-Name",
-          "port": "Port",
-          "verify_ssl": "SSL-Zertifikat prüfen",
-          "scan_interval": "Abfrageintervall (s)",
-          "top_clients_count": "Anzahl der Top-Clients"
+          "password": "Passwort"
+        },
+        "data_description": {
+          "host": "IP-Adresse oder Hostname, zum Beispiel `192.168.1.1`. Ein vorangestelltes https:// wird automatisch entfernt.",
+          "username": "Ein lokales Konto auf dem Controller.",
+          "password": "Passwort dieses Kontos."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Erweiterte Einstellungen",
+            "description": "Die Vorgaben passen zu einer UniFi-OS-Konsole. Ändere sie nur, wenn die Verbindung scheitert.",
+            "data": {
+              "site": "Site-Name",
+              "port": "Port",
+              "verify_ssl": "SSL-Zertifikat prüfen"
+            },
+            "data_description": {
+              "site": "Interner Site-Name, fast immer `default`.",
+              "port": "`443` bei UniFi-OS-Konsolen, `8443` bei einem klassischen eigenständigen Controller.",
+              "verify_ssl": "Aus lassen, wenn der Controller ein selbstsigniertes Zertifikat nutzt."
+            }
+          }
         }
       },
       "reauth_confirm": {
@@ -22,6 +38,34 @@
           "username": "Benutzername",
           "password": "Passwort"
         }
+      },
+      "reconfigure": {
+        "title": "UniFi Network+ neu konfigurieren",
+        "description": "Ändere die Verbindungseinstellungen. Sie werden vor dem Speichern geprüft; die Site lässt sich nicht ändern.",
+        "data": {
+          "host": "Adresse des Controllers",
+          "username": "Benutzername",
+          "password": "Passwort"
+        },
+        "data_description": {
+          "host": "IP-Adresse oder Hostname, zum Beispiel `192.168.1.1`. Ein vorangestelltes https:// wird automatisch entfernt.",
+          "username": "Ein lokales Konto auf dem Controller.",
+          "password": "Leer lassen, um das aktuelle Passwort zu behalten."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Erweiterte Einstellungen",
+            "description": "Die Vorgaben passen zu einer UniFi-OS-Konsole. Ändere sie nur, wenn die Verbindung scheitert.",
+            "data": {
+              "port": "Port",
+              "verify_ssl": "SSL-Zertifikat prüfen"
+            },
+            "data_description": {
+              "port": "`443` bei UniFi-OS-Konsolen, `8443` bei einem klassischen eigenständigen Controller.",
+              "verify_ssl": "Aus lassen, wenn der Controller ein selbstsigniertes Zertifikat nutzt."
+            }
+          }
+        }
       }
     },
     "error": {
@@ -30,7 +74,8 @@
     },
     "abort": {
       "already_configured": "Dieser Controller/diese Site ist bereits eingerichtet",
-      "reauth_successful": "Die erneute Anmeldung war erfolgreich"
+      "reauth_successful": "Die erneute Anmeldung war erfolgreich",
+      "reconfigure_successful": "Die Neukonfiguration war erfolgreich"
     }
   },
   "options": {
@@ -40,6 +85,10 @@
         "data": {
           "scan_interval": "Abfrageintervall (s)",
           "top_clients_count": "Anzahl der Top-Clients"
+        },
+        "data_description": {
+          "scan_interval": "Wie oft der Controller abgefragt wird. Ereignisse des Controllers lösen dazwischen zusätzliche Aktualisierungen aus.",
+          "top_clients_count": "Wie viele der aktivsten Clients der Top-Clients-Sensor auflistet."
         }
       }
     }
