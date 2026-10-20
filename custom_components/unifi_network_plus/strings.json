@@ -14,6 +14,14 @@
           "scan_interval": "Scan interval (s)",
           "top_clients_count": "Number of top clients to track"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate UniFi Network+",
+        "description": "The login for {host} was rejected. Enter the current username and password.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -21,7 +29,8 @@
       "invalid_auth": "Invalid username or password"
     },
     "abort": {
-      "already_configured": "This controller/site is already configured"
+      "already_configured": "This controller/site is already configured",
+      "reauth_successful": "Re-authentication was successful"
     }
   },
   "options": {

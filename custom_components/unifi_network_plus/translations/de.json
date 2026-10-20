@@ -14,6 +14,14 @@
           "scan_interval": "Abfrageintervall (s)",
           "top_clients_count": "Anzahl der Top-Clients"
         }
+      },
+      "reauth_confirm": {
+        "title": "UniFi Network+ erneut anmelden",
+        "description": "Die Anmeldung an {host} wurde abgelehnt. Gib Benutzername und Passwort neu ein.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
       }
     },
     "error": {
@@ -21,7 +29,8 @@
       "invalid_auth": "Benutzername oder Passwort ungültig"
     },
     "abort": {
-      "already_configured": "Dieser Controller/diese Site ist bereits eingerichtet"
+      "already_configured": "Dieser Controller/diese Site ist bereits eingerichtet",
+      "reauth_successful": "Die erneute Anmeldung war erfolgreich"
     }
   },
   "options": {

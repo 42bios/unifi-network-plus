@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import aiohttp
@@ -133,6 +134,46 @@ class UniFiNetworkPlusConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = self._build_user_schema()
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
+        """Start re-authentication after the controller rejected the stored login."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Ask for new credentials, validate them and update the stored entry."""
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            ok, error = await _test_connection(
+                self.hass,
+                host=str(entry.data[CONF_HOST]),
+                port=int(entry.data.get(CONF_PORT, DEFAULT_PORT)),
+                username=str(user_input[CONF_USERNAME]),
+                password=str(user_input[CONF_PASSWORD]),
+                site=str(entry.data.get(CONF_SITE, DEFAULT_SITE)),
+                verify_ssl=bool(entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)),
+            )
+            if ok:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates={
+                        CONF_USERNAME: user_input[CONF_USERNAME],
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    },
+                )
+            errors["base"] = error or "cannot_connect"
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_USERNAME, default=entry.data.get(CONF_USERNAME, "")): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={"host": str(entry.data.get(CONF_HOST, ""))},
+        )
 
     def _build_user_schema(self) -> vol.Schema:
         return vol.Schema(

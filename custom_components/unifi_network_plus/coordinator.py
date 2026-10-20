@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
@@ -173,7 +174,9 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
             devices = await self.client.get_devices()
             health = await self.client.get_health()
         except UniFiAuthError as err:
-            raise UpdateFailed(f"Authentication failed: {err}") from err
+            # Starts Home Assistant's reauth flow (see config_flow.py) instead
+            # of retrying a login that can no longer succeed.
+            raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
         except UniFiApiError as err:
             raise UpdateFailed(f"Error communicating with UniFi controller: {err}") from err
 
