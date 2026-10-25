@@ -7,14 +7,12 @@
 [![GitHub release](https://img.shields.io/github/v/release/42bios/unifi-network-plus)](https://github.com/42bios/unifi-network-plus/releases)
 [![buy me a coffee – donate](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow?style=flat)](https://buymeacoffee.com/42bios)
 
-[![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=42bios&repository=unifi-network-plus&category=integration)
+**More insight and control for your UniFi network in Home Assistant.**
+Monitor devices, clients, ports, PoE and WAN performance, with additional sensors and controls through a direct connection to your local UniFi controller.
 
-Home Assistant custom integration that talks **directly** to a local
-Ubiquiti UniFi Network Controller / UniFi OS console. Started as a
-companion to the core `unifi` integration (extra stats it doesn't expose);
-the goal going forward is closing the remaining gap to become a complete
-replacement, not just a "+" add-on - see [Roadmap toward feature
-parity](#roadmap-toward-feature-parity).
+<img src="custom_components/unifi_network_plus/brand/icon@2x.png" alt="UniFi Network Plus logo" width="160">
+
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=42bios&repository=unifi-network-plus&category=integration)
 
 **1087 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment - mostly per-client/per-port
@@ -65,6 +63,13 @@ best-effort on other controller models/versions.
 - [License](#license)
 
 ## Why this exists
+
+Home Assistant custom integration that talks **directly** to a local
+Ubiquiti UniFi Network Controller / UniFi OS console. Started as a
+companion to the core `unifi` integration (extra stats it doesn't expose);
+the goal going forward is closing the remaining gap to become a complete
+replacement, not just a "+" add-on - see [Roadmap toward feature
+parity](#roadmap-toward-feature-parity).
 
 The core `unifi` integration is great for device presence and basic
 device health, but it does not map several of the numbers the UniFi
