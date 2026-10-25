@@ -5,7 +5,6 @@
 [![Hassfest](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml)
 [![HACS Default](https://img.shields.io/badge/HACS-Default-blue.svg)](https://github.com/hacs/integration)
 [![GitHub release](https://img.shields.io/github/v/release/42bios/unifi-network-plus?color=blue)](https://github.com/42bios/unifi-network-plus/releases)
-[![buy me a coffee – donate](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow?style=flat)](https://buymeacoffee.com/42bios)
 
 **More insight and control for your UniFi network in Home Assistant.**
 Monitor devices, clients, ports, PoE and WAN performance, with additional sensors and controls through a direct connection to your local UniFi controller.
@@ -13,6 +12,14 @@ Monitor devices, clients, ports, PoE and WAN performance, with additional sensor
 <img src="custom_components/unifi_network_plus/brand/logo.png" alt="UniFi Network Plus logo" width="160">
 
 [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=42bios&repository=unifi-network-plus&category=integration)
+
+<a href="https://www.buymeacoffee.com/42bios">
+  <img
+    src="https://cdn.buymeacoffee.com/buttons/v2/arial-yellow.png"
+    alt="Buy Me a Coffee"
+    width="180"
+  />
+</a>
 
 > **Disclaimer:** This is an unofficial, community-maintained integration and is not
 > affiliated with, endorsed by, or supported by Ubiquiti Inc. UniFi and
