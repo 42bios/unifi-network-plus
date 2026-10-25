@@ -18,14 +18,6 @@ Monitor devices, clients, ports, PoE and WAN performance, with additional sensor
 > related product names, logos, and brands are property of Ubiquiti Inc.
 > and are used here for identification purposes only.
 
-<a href="https://www.buymeacoffee.com/42bios">
-  <img
-    src="https://cdn.buymeacoffee.com/buttons/v2/arial-yellow.png"
-    alt="Buy Me a Coffee"
-    width="180"
-  />
-</a>
-
 **About 1,070 entities** on the author's setup (9 UniFi devices, ~100 clients;
 core `unifi` had 281 in the same environment when first measured - mostly per-client/per-port
 entities, most disabled by default so a fresh install stays uncluttered):
@@ -515,9 +507,15 @@ substitution), not just eyeballed.
 
 ## Support
 
-If you find this project useful, you can [buy me a coffee](https://buymeacoffee.com/42bios) to support development and testing.
-
 - Issues: https://github.com/42bios/unifi-network-plus/issues
+
+<a href="https://www.buymeacoffee.com/42bios">
+  <img
+    src="https://cdn.buymeacoffee.com/buttons/v2/arial-yellow.png"
+    alt="Buy Me a Coffee"
+    width="140"
+  />
+</a>
 
 ## License
 
