@@ -4,7 +4,7 @@
 [![HACS Validate](https://github.com/42bios/unifi-network-plus/actions/workflows/hacs-validate.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hacs-validate.yml)
 [![Hassfest](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-blue.svg)](https://github.com/hacs/integration)
-[![GitHub release](https://img.shields.io/github/v/release/42bios/unifi-network-plus)](https://github.com/42bios/unifi-network-plus/releases)
+[![GitHub release](https://img.shields.io/github/v/release/42bios/unifi-network-plus?color=blue)](https://github.com/42bios/unifi-network-plus/releases)
 [![buy me a coffee – donate](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow?style=flat)](https://buymeacoffee.com/42bios)
 
 **More insight and control for your UniFi network in Home Assistant.**
