@@ -15,6 +15,10 @@ the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
 
+If you find this project useful, you can support its development and testing by buying me a coffee.
+
+<a href="https://buymeacoffee.com/42bios"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" width="217" height="60"></a>
+
 **1087 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment - mostly per-client/per-port
 entities, most disabled by default so a fresh install stays uncluttered):
