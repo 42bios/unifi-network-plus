@@ -3,7 +3,7 @@
 [![CI](https://github.com/42bios/unifi-network-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/ci.yml)
 [![HACS Validate](https://github.com/42bios/unifi-network-plus/actions/workflows/hacs-validate.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hacs-validate.yml)
 [![Hassfest](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml)
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-blue.svg)](https://github.com/hacs/integration)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-blue.svg)](https://github.com/hacs/integration)
 [![GitHub release](https://img.shields.io/github/v/release/42bios/unifi-network-plus?color=blue)](https://github.com/42bios/unifi-network-plus/releases)
 [![buy me a coffee – donate](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow?style=flat)](https://buymeacoffee.com/42bios)
 
@@ -19,8 +19,8 @@ Monitor devices, clients, ports, PoE and WAN performance, with additional sensor
 > related product names, logos, and brands are property of Ubiquiti Inc.
 > and are used here for identification purposes only.
 
-**1087 entities** as of the latest release (vs. the core `unifi`
-integration's 281 in the same environment - mostly per-client/per-port
+**About 1,070 entities** on the author's setup (9 UniFi devices, ~100 clients;
+core `unifi` had 281 in the same environment when first measured - mostly per-client/per-port
 entities, most disabled by default so a fresh install stays uncluttered):
 
 - **Stats**: WAN throughput/latency/ISP/availability/speedtest, top
@@ -42,7 +42,7 @@ entities, most disabled by default so a fresh install stays uncluttered):
 New devices/clients are picked up automatically on the next poll, no
 restart needed.
 
-**Verified against a live UDM-family (UniFi OS) controller** - see "What
+**Verified against a live UniFi OS console** (Cloud Key Gen2 Plus, Network 10.6 and 11.0) - see "What
 was verified" below for exactly what that covered and what's still
 best-effort on other controller models/versions.
 
@@ -162,7 +162,7 @@ instead.
 
 ## Real bugs found (and fixed) against a live controller
 
-These surfaced during live testing against a real UDM-family controller -
+These surfaced during live testing against a real UniFi OS controller -
 recorded here because they're the kind of thing that's easy to
 reintroduce. #1-3 have a regression test in `tests/test_api.py`; #4-6 are
 Home Assistant framework behaviors (threading rules, entity-base-class
@@ -183,7 +183,7 @@ are **per-bucket totals**, not a running counter - Mbps is
 
 ## Sensors
 
-All entries below are confirmed against a live UDM-family controller
+All entries below are confirmed against a live UniFi OS controller
 unless noted. Per-device and per-radio sensors are created dynamically -
 the counts shown are for the test setup (5 APs, 4 switches, 1 gateway).
 
@@ -357,12 +357,11 @@ dashboard, then adjust the field-name candidates in `parsing.py`.
 
 ## Installation
 
-### HACS (custom repository)
+### HACS
 
-1. HACS → Integrations → ⋮ → Custom repositories.
-2. Repository URL: `https://github.com/42bios/unifi-network-plus`, category `Integration`.
-3. Install "UniFi Network+" and restart Home Assistant.
-4. Settings → Devices & Services → Add Integration → "UniFi Network+".
+1. HACS → Integrations → search for "UniFi Network+" → Download (or use the button at the top).
+2. Restart Home Assistant.
+3. Settings → Devices & Services → Add Integration → "UniFi Network+".
 
 ### Manual
 
