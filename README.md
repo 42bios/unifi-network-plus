@@ -10,9 +10,14 @@
 **More insight and control for your UniFi network in Home Assistant.**
 Monitor devices, clients, ports, PoE and WAN performance, with additional sensors and controls through a direct connection to your local UniFi controller.
 
-<img src="custom_components/unifi_network_plus/brand/icon@2x.png" alt="UniFi Network Plus logo" width="160">
+<img src="custom_components/unifi_network_plus/brand/logo.png" alt="UniFi Network Plus logo" width="160">
 
 [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=42bios&repository=unifi-network-plus&category=integration)
+
+> **Disclaimer:** This is an unofficial, community-maintained integration and is not
+> affiliated with, endorsed by, or supported by Ubiquiti Inc. UniFi and
+> related product names, logos, and brands are property of Ubiquiti Inc.
+> and are used here for identification purposes only.
 
 **1087 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment - mostly per-client/per-port
@@ -59,7 +64,6 @@ best-effort on other controller models/versions.
 - [Roadmap toward feature parity](#roadmap-toward-feature-parity)
 - [On UniFi's official REST API (developer.ui.com)](#on-unifis-official-rest-api-developeruicom)
 - [Bundled automation blueprints](#bundled-automation-blueprints)
-- [Disclaimer](#disclaimer)
 - [License](#license)
 
 ## Why this exists
@@ -501,12 +505,6 @@ whatever) plus a ready-made `{{ alert_message }}`/`{{ presence_message }}`/
 against HA's real blueprint-loading code path (schema validation + input
 substitution), not just eyeballed.
 
-## Disclaimer
-
-This is an unofficial, community-maintained integration and is not
-affiliated with, endorsed by, or supported by Ubiquiti Inc. UniFi and
-related product names, logos, and brands are property of Ubiquiti Inc.
-and are used here for identification purposes only.
 
 ## Support
 
