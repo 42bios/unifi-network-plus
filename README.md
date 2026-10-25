@@ -13,6 +13,11 @@ Monitor devices, clients, ports, PoE and WAN performance, with additional sensor
 
 [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=42bios&repository=unifi-network-plus&category=integration)
 
+> **Disclaimer:** This is an unofficial, community-maintained integration and is not
+> affiliated with, endorsed by, or supported by Ubiquiti Inc. UniFi and
+> related product names, logos, and brands are property of Ubiquiti Inc.
+> and are used here for identification purposes only.
+
 <a href="https://www.buymeacoffee.com/42bios">
   <img
     src="https://cdn.buymeacoffee.com/buttons/v2/arial-yellow.png"
@@ -20,11 +25,6 @@ Monitor devices, clients, ports, PoE and WAN performance, with additional sensor
     width="180"
   />
 </a>
-
-> **Disclaimer:** This is an unofficial, community-maintained integration and is not
-> affiliated with, endorsed by, or supported by Ubiquiti Inc. UniFi and
-> related product names, logos, and brands are property of Ubiquiti Inc.
-> and are used here for identification purposes only.
 
 **About 1,070 entities** on the author's setup (9 UniFi devices, ~100 clients;
 core `unifi` had 281 in the same environment when first measured - mostly per-client/per-port
