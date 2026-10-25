@@ -64,6 +64,7 @@ best-effort on other controller models/versions.
 - [Roadmap toward feature parity](#roadmap-toward-feature-parity)
 - [On UniFi's official REST API (developer.ui.com)](#on-unifis-official-rest-api-developeruicom)
 - [Bundled automation blueprints](#bundled-automation-blueprints)
+- [Support](#support)
 - [License](#license)
 
 ## Why this exists
@@ -509,6 +510,9 @@ substitution), not just eyeballed.
 ## Support
 
 If you find this project useful, you can [buy me a coffee](https://buymeacoffee.com/42bios) to support development and testing.
+
+- Issues: https://github.com/42bios/unifi-network-plus/issues
+- Releases: https://github.com/42bios/unifi-network-plus/releases
 
 ## License
 
