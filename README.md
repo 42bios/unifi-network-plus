@@ -511,7 +511,6 @@ substitution), not just eyeballed.
 If you find this project useful, you can [buy me a coffee](https://buymeacoffee.com/42bios) to support development and testing.
 
 - Issues: https://github.com/42bios/unifi-network-plus/issues
-- Releases: https://github.com/42bios/unifi-network-plus/releases
 
 ## License
 
