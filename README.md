@@ -3,8 +3,9 @@
 [![CI](https://github.com/42bios/unifi-network-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/ci.yml)
 [![HACS Validate](https://github.com/42bios/unifi-network-plus/actions/workflows/hacs-validate.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hacs-validate.yml)
 [![Hassfest](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml/badge.svg)](https://github.com/42bios/unifi-network-plus/actions/workflows/hassfest.yml)
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-blue.svg)](https://github.com/hacs/integration)
 [![GitHub release](https://img.shields.io/github/v/release/42bios/unifi-network-plus)](https://github.com/42bios/unifi-network-plus/releases)
+[![buy me a coffee – donate](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow?style=flat)](https://buymeacoffee.com/42bios)
 
 [![Open your Home Assistant instance and open this repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=42bios&repository=unifi-network-plus&category=integration)
 
@@ -14,10 +15,6 @@ companion to the core `unifi` integration (extra stats it doesn't expose);
 the goal going forward is closing the remaining gap to become a complete
 replacement, not just a "+" add-on - see [Roadmap toward feature
 parity](#roadmap-toward-feature-parity).
-
-If you find this project useful, you can support its development and testing by buying me a coffee.
-
-[![buy me a coffee – donate](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow?style=flat-square)](https://buymeacoffee.com/42bios)
 
 **1087 entities** as of the latest release (vs. the core `unifi`
 integration's 281 in the same environment - mostly per-client/per-port
@@ -505,6 +502,10 @@ This is an unofficial, community-maintained integration and is not
 affiliated with, endorsed by, or supported by Ubiquiti Inc. UniFi and
 related product names, logos, and brands are property of Ubiquiti Inc.
 and are used here for identification purposes only.
+
+## Support
+
+If you find this project useful, you can [buy me a coffee](https://buymeacoffee.com/42bios) to support development and testing.
 
 ## License
 
