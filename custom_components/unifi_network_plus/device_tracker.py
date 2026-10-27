@@ -25,7 +25,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import RUNTIME_COORDINATOR
-from .const import DOMAIN
+from .const import DOMAIN, track_clients
 from .coordinator import UniFiNetworkPlusCoordinator
 
 
@@ -42,7 +42,7 @@ async def async_setup_entry(
     known_macs: set[str] = set()
 
     def _discover_new_clients() -> None:
-        if not coordinator.data:
+        if not coordinator.data or not track_clients(entry):
             return
         new_entities = []
         for client in coordinator.data.tracked_clients:

@@ -84,11 +84,13 @@
         "title": "UniFi Network+ options",
         "data": {
           "scan_interval": "Scan interval (s)",
-          "top_clients_count": "Number of top clients to track"
+          "top_clients_count": "Number of top clients to track",
+          "track_clients": "Track clients"
         },
         "data_description": {
           "scan_interval": "How often the controller is polled. Events from the controller trigger extra refreshes in between.",
-          "top_clients_count": "How many of the busiest clients the Top Clients sensor lists."
+          "top_clients_count": "How many of the busiest clients the Top Clients sensor lists.",
+          "track_clients": "Create a presence tracker, a block switch and a reconnect button for every client the controller knows. Turn off if you only want the UniFi devices; existing client entities are removed."
         }
       }
     }

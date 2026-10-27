@@ -19,11 +19,13 @@ from .const import (
     CONF_SCAN_INTERVAL,
     CONF_SITE,
     CONF_TOP_CLIENTS_COUNT,
+    CONF_TRACK_CLIENTS,
     CONF_VERIFY_SSL,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SITE,
     DEFAULT_TOP_CLIENTS,
+    DEFAULT_TRACK_CLIENTS,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
 )
@@ -141,7 +143,7 @@ class UniFiNetworkPlusOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         if user_input is not None:
-            return self.async_create_entry(title="", data={key: int(value) for key, value in user_input.items()})
+            return self.async_create_entry(title="", data={k: v if isinstance(v, bool) else int(v) for k, v in user_input.items()})
         return self.async_show_form(step_id="init", data_schema=self._build_schema())
 
     def _build_schema(self) -> vol.Schema:
@@ -167,6 +169,9 @@ class UniFiNetworkPlusOptionsFlow(config_entries.OptionsFlow):
                 ): sel.NumberSelector(
                     sel.NumberSelectorConfig(min=1, max=25, step=1, mode=sel.NumberSelectorMode.SLIDER)
                 ),
+                vol.Required(
+                    CONF_TRACK_CLIENTS, default=options.get(CONF_TRACK_CLIENTS, DEFAULT_TRACK_CLIENTS)
+                ): sel.BooleanSelector(),
             }
         )
 

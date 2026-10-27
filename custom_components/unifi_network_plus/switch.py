@@ -36,7 +36,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import RUNTIME_COORDINATOR
-from .const import DOMAIN, MANUFACTURER
+from .const import DOMAIN, MANUFACTURER, track_clients
 from .coordinator import UniFiNetworkPlusCoordinator
 from .device import controller_via_device_id
 
@@ -81,7 +81,7 @@ async def async_setup_entry(
                 if port.port_enabled is not None and key not in known_enable_port_keys:
                     known_enable_port_keys.add(key)
                     new_entities.append(PortEnabledSwitch(entry, coordinator, device.mac, port.port_idx))
-        for client in coordinator.data.tracked_clients:
+        for client in coordinator.data.tracked_clients if track_clients(entry) else []:
             if client.mac not in known_client_macs:
                 known_client_macs.add(client.mac)
                 new_entities.append(BlockClientSwitch(entry, coordinator, client.mac))

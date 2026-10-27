@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.device_registry import DeviceEntry
 
@@ -25,6 +26,7 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     PLATFORMS,
+    track_clients,
 )
 from .coordinator import UniFiNetworkPlusCoordinator
 from .websocket import UniFiEventListener
@@ -123,8 +125,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         RUNTIME_EVENT_LISTENER: event_listener,
     }
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    if not track_clients(entry):
+        _remove_client_entities(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+def _remove_client_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Drop presence trackers, block switches and reconnect buttons that were
+    created while client tracking was still on."""
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        unique_id = entity.unique_id or ""
+        if (
+            entity.domain == "device_tracker"
+            or (entity.domain == "switch" and unique_id.endswith("_block"))
+            or (entity.domain == "button" and unique_id.endswith("_reconnect"))
+        ):
+            registry.async_remove(entity.entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

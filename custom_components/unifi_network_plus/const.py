@@ -15,6 +15,8 @@ DEFAULT_TOP_CLIENTS = 5
 
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_TOP_CLIENTS_COUNT = "top_clients_count"
+CONF_TRACK_CLIENTS = "track_clients"
+DEFAULT_TRACK_CLIENTS = True
 
 PLATFORMS: list[str] = ["sensor", "update", "binary_sensor", "switch", "device_tracker", "button"]
 
@@ -35,3 +37,8 @@ ATTR_WAN_RX_BYTES = "wan-rx_bytes"
 ATTR_WAN_TX_BYTES = "wan-tx_bytes"
 ATTR_WAN_LATENCY_AVG = "wan-latency_avg"
 
+
+
+def track_clients(entry) -> bool:
+    """Whether per-client entities (presence tracker, block switch, reconnect button) are wanted."""
+    return bool(entry.options.get(CONF_TRACK_CLIENTS, DEFAULT_TRACK_CLIENTS))

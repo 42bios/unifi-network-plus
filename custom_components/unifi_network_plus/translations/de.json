@@ -84,11 +84,13 @@
         "title": "UniFi Network+ Optionen",
         "data": {
           "scan_interval": "Abfrageintervall (s)",
-          "top_clients_count": "Anzahl der Top-Clients"
+          "top_clients_count": "Anzahl der Top-Clients",
+          "track_clients": "Clients verfolgen"
         },
         "data_description": {
           "scan_interval": "Wie oft der Controller abgefragt wird. Ereignisse des Controllers lösen dazwischen zusätzliche Aktualisierungen aus.",
-          "top_clients_count": "Wie viele der aktivsten Clients der Top-Clients-Sensor auflistet."
+          "top_clients_count": "Wie viele der aktivsten Clients der Top-Clients-Sensor auflistet.",
+          "track_clients": "Legt für jeden dem Controller bekannten Client einen Anwesenheits-Tracker, einen Block-Schalter und einen Reconnect-Button an. Ausschalten, wenn du nur die UniFi-Geräte willst; vorhandene Client-Entitäten werden entfernt."
         }
       }
     }

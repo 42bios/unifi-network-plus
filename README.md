@@ -400,8 +400,10 @@ Config flow fields:
 | Advanced: Port | `443` for UniFi OS consoles, `8443` for a classic controller |
 | Advanced: Verify SSL certificate | off by default (most controllers use a self-signed cert); enable if you have a trusted cert |
 
-Scan interval (default 60 s) and the number of top clients (default 5) are
-under **Configure** on the integration card. **Reconfigure** (three-dot menu)
+Scan interval (default 60 s), the number of top clients (default 5) and
+**Track clients** (default on; turn off if you only want the UniFi devices -
+no presence trackers, block switches or reconnect buttons, and existing ones
+are removed) are under **Configure** on the integration card. **Reconfigure** (three-dot menu)
 changes host, port, account or SSL later without removing the integration;
 leave the password empty there to keep the current one. If the controller
 rejects the login (for example after a password change), Home Assistant
