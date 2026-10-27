@@ -29,6 +29,7 @@ from .const import (
     track_clients,
 )
 from .coordinator import UniFiNetworkPlusCoordinator
+from .device import remove_orphaned_client_devices
 from .websocket import UniFiEventListener
 
 _LOGGER = logging.getLogger(__name__)
@@ -143,6 +144,7 @@ def _remove_client_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
             or (entity.domain == "button" and unique_id.endswith("_reconnect"))
         ):
             registry.async_remove(entity.entity_id)
+    remove_orphaned_client_devices(hass, entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -167,7 +169,8 @@ async def async_remove_config_entry_device(
         if domain == DOMAIN and identifier.startswith(prefix)
     ]
     if not macs:
-        return False  # the controller's own device entry
+        # Client devices (no identifier of ours) may go; the controller's own entry may not.
+        return not any(domain == DOMAIN for domain, _ in device_entry.identifiers)
     runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     coordinator = runtime[RUNTIME_COORDINATOR] if runtime else None
     if coordinator is None or not coordinator.data:

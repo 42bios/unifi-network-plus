@@ -17,6 +17,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import UniFiApiError, UniFiAuthError, UniFiClient
 from .const import DEFAULT_TOP_CLIENTS, DOMAIN
+from .device import remove_orphaned_client_devices
 from .parsing import (
     DeviceInfo,
     HealthSubsystem,
@@ -142,6 +143,7 @@ class UniFiNetworkPlusCoordinator(DataUpdateCoordinator[UniFiSnapshot]):
         for mac in self._missing_clients.update(set(by_mac), seen):
             _LOGGER.info("Removing tracker for client %s: no longer known to the controller", mac)
             registry.async_remove(by_mac[mac])
+            remove_orphaned_client_devices(self.hass, self.entry_id)
 
     async def _fetch_optional(self, label: str, coro):
         """Run one endpoint fetch; on auth/API error, log and degrade to empty.
